@@ -316,7 +316,7 @@ active-text-color="#ffd04b"
                         GM_addStyle('.el-menu>li:nth-child('+(ch_id+1)+'){background:rgba(255,165,0,.5) !important}')
                     }
                     sidebar_app.items.push({
-                        title:this.title,
+                        title:this.text,
                         href:this.href,
                     })
                 })
