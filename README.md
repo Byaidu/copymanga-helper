@@ -1,0 +1,1 @@
+# copymanga-helper
