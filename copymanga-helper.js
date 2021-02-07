@@ -29,10 +29,9 @@
         //去除footer
         GM_addStyle('.footer{display:none !important;}')
         //文字居中
-        GM_addStyle('body{text-align:center !important;font-size:12px !important;}')
+        GM_addStyle('body{text-align:center !important;font-size:12px !important;line-height: normal !important;}')
         //图片居中
         GM_addStyle('ul{padding:0px !important;}')
-        //GM_addStyle('.container{max-width:unset !important!}')
         //body全屏
         GM_addStyle('body{height:unset !important;}')
         //修改滚动条样式
@@ -44,13 +43,11 @@
         GM_addStyle('.el-drawer{background:transparent !important;}')
         GM_addStyle('.el-drawer__body{background:rgba(0,0,0,.8) !important;overflow-y: auto}')
         //漫画单页排布
-        GM_addStyle('.comicContent{margin-top:20px;}')
+        GM_addStyle('.comicContent{margin-top:20px;user-select: none;}')
         GM_addStyle('.comicContent img{height:150vh;margin-bottom: 50px;!important;width:unset !important;}')
         //漫画双页排布
         GM_addStyle('.page_double .comicContent ul{justify-content:center;flex-direction: row-reverse;display: flex;flex-wrap: wrap;}')
         GM_addStyle('.page_double .comicContent img{height:100vh !important;}')
-        //去除图片点击样式
-        GM_addStyle('.inner_img a{cursor:auto !important;}')
         //引入css
         const animate_css = GM_getResourceText("animate_css");
         const element_css = GM_getResourceText("element_css");
