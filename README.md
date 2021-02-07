@@ -37,7 +37,3 @@ https://greasyfork.org/zh-CN/scripts/421371
 浏览器：Chrome✅、Edge（Chromium 内核）✅
 
 扩展：Violentmonkey✅、Tampermonkey（需要设置即时注入模式）✅
-
-## 项目地址
-
-https://github.com/Byaidu/copymanga-helper
