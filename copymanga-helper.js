@@ -323,7 +323,7 @@ active-text-color="#ffd04b"
                         href:this.href,
                     })
                 })
-            },1000);
+            },2000);
             })
     }
 })();
