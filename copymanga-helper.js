@@ -29,7 +29,7 @@
         //去除footer
         GM_addStyle('.footer{display:none !important;}')
         //文字居中
-        GM_addStyle('body{text-align:center !important;}')
+        GM_addStyle('body{text-align:center !important;font-size:12px !important;}')
         //图片居中
         GM_addStyle('ul{padding:0px !important;}')
         //GM_addStyle('.container{max-width:unset !important!}')
