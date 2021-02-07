@@ -59,6 +59,7 @@
         //日间模式
         GM_addStyle("body{background:#edecea !important;}")
         //夜间模式
+        GM_addStyle("html{background:transparent !important;}")
         GM_addStyle(".dark_mode body{background:#212121 !important;}")
         //读取cookie
         if ($.cookie('dark_mode') === undefined) { $.cookie('dark_mode',true,{expires:999999,path:'/'}); }
