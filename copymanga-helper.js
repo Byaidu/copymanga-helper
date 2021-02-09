@@ -266,7 +266,7 @@ width:120px;
             //添加侧边目录栏
             let sidebar=`
 <div id="sidebar" @mouseleave="drawer=false">
-<div id="toggle" @mouseover="drawer=true" style="top:0px;left:0px;height:100vh;width:10vw;position: fixed;"></div>
+<div id="toggle" @mouseover="drawer=true" style="top:0px;left:0px;height:100vh;width:20vw;position: fixed;"></div>
 <el-drawer
 title="我是标题"
 :size="size"
