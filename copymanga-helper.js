@@ -22,6 +22,7 @@
     'use strict';
     //去广告
     GM_addStyle('*[style*="position: relative;"]{display:none !important;}')
+    GM_addStyle('.header-jum{display:none !important;}')
     //漫画页检测
     if(location.href.indexOf("chapter")>=0){
         //固定header
