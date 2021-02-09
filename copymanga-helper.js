@@ -309,8 +309,12 @@ active-text-color="#ffd04b"
                 }
             })
             //加载目录
-            setTimeout(function(){
+            function menu(){
                 let $border=$('#default全部 .table-all a', el.contents());
+                if ($border.length==0){
+                    setTimeout(menu,100);
+                    return;
+                }
                 $.each($border,function(index){
                     if (location.href.indexOf(this.href)>=0){
                         ch_id=index;
@@ -321,7 +325,8 @@ active-text-color="#ffd04b"
                         href:this.href,
                     })
                 })
-            },2000);
+            }
+            menu();
             })
     }
 })();
