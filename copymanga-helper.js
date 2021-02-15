@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      3.8
+// @version      3.9
 // @description  拷贝漫画去广告🚫，对日漫版漫画页进行增强：并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙，请设置即时注入模式以避免页面闪烁⚠️
 // @author       Byaidu
 // @match        *://copymanga.com/*
@@ -79,11 +79,11 @@
         }else{
             $('html').removeClass('page_double');
         }
+        let img_id=0;
+        let middle=0;
+        let ch_id=0;
         //延迟加载
         $(function delay(){
-            let img_id=0;
-            let middle=0;
-            let ch_id=0;
             //计算页数
             if (typeof(g_max_pic_count)=='undefined'){
                 window.el = $( '<iframe src="'+$('.list a').attr('href')+'" style="display:none;"></iframe>' );
