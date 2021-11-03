@@ -1,333 +1,360 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      4.0
+// @version      6.1
 // @description  拷贝漫画去广告🚫，对日漫版漫画页进行增强：并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙，请设置即时注入模式以避免页面闪烁⚠️
 // @author       Byaidu
-// @match        *://copymanga.com/*
+// @match        *://*.copymanga.com/comic/*/chapter/*
 // @license      GNU General Public License v3.0 or later
-// @resource     animate_css https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css
 // @resource     element_css https://unpkg.com/element-ui@2.15.0/lib/theme-chalk/index.css
+// @resource     animate_css https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css
 // @require      https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.min.js
-// @require      https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js
-// @require      https://cdn.jsdelivr.net/npm/jquery.cookie@1.4.1/jquery.cookie.js
 // @require      https://unpkg.com/element-ui@2.15.0/lib/index.js
+// @require      https://unpkg.com/axios/dist/axios.min.js
+// @require      https://unpkg.com/store.js@1.0.4/store.js
+// @require      https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js
 // @grant        GM_addStyle
 // @grant        GM_getResourceText
 // @grant        GM_xmlhttpRequest
 // @run-at       document-start
 // ==/UserScript==
 
-(function() {
-    'use strict';
-    //去广告
-    GM_addStyle('*[style*="position: relative;"]{display:none !important;}')
-    GM_addStyle('.header-jum{display:none !important;}')
-    //漫画页检测
-    if(location.href.indexOf("chapter")>=0){
-        //固定header
-        GM_addStyle('.header{position:unset !important;}')
-        //去除footer
-        GM_addStyle('.footer{display:none !important;}')
-        //文字居中
-        GM_addStyle('body{text-align:center !important;font-size:12px !important;line-height: normal !important;}')
-        //图片居中
-        GM_addStyle('ul{padding:0px !important;}')
-        //body全屏
-        GM_addStyle('body{height:unset !important;}')
-        //修改滚动条样式
-        GM_addStyle('::-webkit-scrollbar {width: 4px;height: 0px;}')
-        GM_addStyle('::-webkit-scrollbar-thumb {background-color: rgb(48,48,48);border-radius: 2px;}')
-        //修改element-ui样式
-        GM_addStyle('.el-menu{border-right:0px !important;}')
-        GM_addStyle('.el-drawer__wrapper{width:20%;}')
-        GM_addStyle('.el-drawer{background:transparent !important;}')
-        GM_addStyle('.el-drawer__body{background:rgba(0,0,0,.8) !important;overflow-y: auto}')
-        //去除图片边框
-        GM_addStyle('.comicContent{margin-top:20px;user-select: none;}')
-        GM_addStyle('.comicContent img{margin-bottom: 50px !important;width:unset !important;}')
-        //漫画双页排布
-        GM_addStyle('.page_double .comicContent ul{justify-content:center;flex-direction: row-reverse;display: flex;flex-wrap: wrap;}')
-        GM_addStyle('.page_double .comicContent img{height:100vh !important;}')
-        //引入css
-        const animate_css = GM_getResourceText("animate_css");
-        const element_css = GM_getResourceText("element_css");
-        GM_addStyle(animate_css);
-        GM_addStyle(element_css);
-        GM_addStyle(':root{--animate-duration:500ms;}')
-        //更改跨页
-        GM_addStyle('.skip{display:none !important;}')
-        //日间模式
-        GM_addStyle("body{background:#edecea !important;}")
-        //夜间模式
-        GM_addStyle("html{background:transparent !important;}")
-        GM_addStyle(".dark_mode body{background:#212121 !important;}")
-        //读取cookie
-        if ($.cookie('dark_mode') === undefined) { $.cookie('dark_mode',true,{expires:999999,path:'/'}); }
-        if ($.cookie('page_double') === undefined) { $.cookie('page_double',true,{expires:999999,path:'/'}); }
-        var dark_mode = $.cookie('dark_mode')=='true';
-        var page_double = $.cookie('page_double')=='true';
-        //暗夜模式
-        if (dark_mode){
-            $('html').addClass('dark_mode');
-        }else{
-            $('html').removeClass('dark_mode');
-        }
-        //双页显示
-        if (page_double){
-            $('html').addClass('page_double');
-        }else{
-            $('html').removeClass('page_double');
-        }
-        let img_id=0;
-        let middle=0;
-        let ch_id=0;
-        //延迟加载
-        $(function delay(){
-            //计算页数
-            if (typeof(g_max_pic_count)=='undefined'){
-                window.el = $( '<iframe src="'+$('.list a').attr('href')+'" style="display:none;"></iframe>' );
-                $('body').append(el);
-                setTimeout(function(){
-                    window.g_max_pic_count=$('.comicContent ul img').length;
-                    delay();
-                },300)
-                return;
-            }
-            //去除憨批类
-            $('.comicContent-image-all').removeClass('comicContent-image-all');
-            $('.container').removeClass('container');
-            $('.comicContent-image-1').removeClass('comicContent-image-1');
-            $('.comicContent-image-2').removeClass('comicContent-image-2');
-            $('.comicContent-image-3').removeClass('comicContent-image-3');
-            //添加图片id
-            let $img=$('.comicContent ul img');
-            $.each($img,function(index){
-                this.setAttribute('id','img_'+(index+1));
-            })
-            //预加载图片
-            $('.comicContent img').addClass('lazypreload');
-            //去除原来的jquery事件
-            jQuery = unsafeWindow['jQuery'];
-            jQuery("body").off("keydown");
-            jQuery(".inner_img a").off("click");
-            //上下方向键滚动页面，左右方向键切换章节
-            function scrollUp(){
-                if (middle==0||img_id==g_max_pic_count+1){
-                    if (img_id>=1){
-                        if ($("#img_"+img_id).length>0&&$("#img_"+(img_id-1)).length>0&&$("#img_"+img_id).offset().top==$("#img_"+(img_id-1)).offset().top){
-                            img_id-=2;
-                        }else{
-                            img_id-=1;
-                        }
-                    }
-                }
-                middle=0;
-                info_app.img_id=img_id;
-                if (img_id!=0) $("html").stop()
-                $("html").animate({scrollTop: $("#img_"+img_id).offset().top}, 500);
+(() => {
+    // 停止加载原生网页
+    window.stop();
 
-            }
-            function scrollDown(){
-                if (img_id<=g_max_pic_count){
-                    if ($("#img_"+img_id).length>0&&$("#img_"+(img_id+1)).length>0&&$("#img_"+img_id).offset().top==$("#img_"+(img_id+1)).offset().top){
-                        img_id+=2;
-                    }else{
-                        img_id+=1;
-                    }
-                }
-                middle=0;
-                info_app.img_id=img_id;
-                if (img_id!=g_max_pic_count+1) $("html").stop()
-                $("html").animate({scrollTop: $("#img_"+img_id).offset().top}, 500);
-            }
-            $(".comicContent").click(function(event){
-                if (event.clientY>$(window).height()/2){
-                    scrollDown();
-                }else{
-                    scrollUp();
-                }
-            })
-            $("body").keydown(function(event) {
-                if (event.keyCode == 38) {
-                    scrollUp();
-                } else if (event.keyCode == 40) {
-                    scrollDown();
-                } else if (event.keyCode == 37) {
-                    let location_new = $('.footer>div:nth-child(2) a').attr("href");
-                    if(location_new.indexOf("chapter")>=0)
-                        location.href = location_new;
-                } else if (event.keyCode == 39) {
-                    let location_new = $('.footer>div:nth-child(4) a').attr("href");
-                    if(location_new.indexOf("chapter")>=0)
-                        location.href = location_new;
-                }
-            })
-            //resize事件触发图片和浏览器对齐
-            $(window).resize(function() {
-                $("html").animate({scrollTop: $("#img_"+img_id).offset().top}, 0);
-            })
-            window.addEventListener('mousewheel', function (){
-                middle=1;
-                setTimeout(function(){
-                    for (var i = 0; i < 2; i++) {
-                        if ((img_id==g_max_pic_count+1&&pageYOffset<$("#img_"+g_max_pic_count).offset().top+$("#img_"+g_max_pic_count).height())||
-                            ($("#img_"+img_id).length>0&&pageYOffset<$("#img_"+img_id).offset().top))
-                            img_id-=1;
-                        if ((img_id==g_max_pic_count&&pageYOffset>$("#img_"+g_max_pic_count).offset().top+$("#img_"+g_max_pic_count).height())||
-                            ($("#img_"+(img_id+1)).length>0&&pageYOffset>$("#img_"+(img_id+1)).offset().top))
-                            img_id+=1;
-                        info_app.img_id=img_id;
-                    }
-                },100);
-            })
-            //添加右下角菜单
-            let info = `
-<div id="info" @mouseover="show=1" @mouseleave="show=0">
-<transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
-<template v-if="show"><div id="info_page" class="info_item" @click="switch_page" style="cursor:pointer;">{{message_page}}</div></template></transition>
-<transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
-<template v-if="show"><div id="info_skip" class="info_item" @click="switch_skip" style="cursor:pointer;">{{message_skip}}</div></template></transition>
-<transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
-<template v-if="show"><div id="info_switch" class="info_item" @click="switch_night" style="cursor:pointer;">{{message_switch}}</div></template></transition>
-<template><div id="info_count" class="info_item">{{message_count}}</div></template>
-</div>`;
-            let $info = $(info);
-            $("body").append($info);
-            let info_style = `
-#info {
-bottom: 2%;
-right: 2%;
-padding: 5px 5px;
-background: rgba(48,48,48,.7) !important;
-position: fixed;
-color: rgba(255,255,255,.7);
-border-radius: 3px;
-}
-.info_item{
-padding:5px 0px;
-width:120px;
-}`;
-            GM_addStyle(info_style);
-            //vue绑定右下角菜单
-            var info_app = new Vue({
-                el: '#info',
-                data: {
-                    dark:dark_mode,
-                    page:page_double,
-                    show:0,
-                    img_id:0,
-                    skip:0,
-                },
-                computed: {
-                    message_switch:  function () {
-                        return this.dark?'☀️日间模式':'🌙夜间模式'
-                    },
-                    message_page:  function () {
-                        return this.page?'1️⃣单页排布':'2️⃣双页排布'
-                    },
-                    message_skip:  function () {
-                        return '📖更改跨页'
-                    },
-                    message_count:  function () {
-                        return this.img_id+'/'+g_max_pic_count
-                    }
-                },
-                methods:{
-                    switch_night: function(){
-                        this.dark=!this.dark
-                        $.cookie('dark_mode',this.dark,{expires:999999,path:'/'});
-                        if (this.dark){
-                            $('html').addClass('dark_mode');
-                        }else{
-                            $('html').removeClass('dark_mode');
-                        }
-                    },
-                    switch_skip: function(){
-                        this.skip=!this.skip
-                        if (this.skip){
-                            $(".comicContent li:first-child").addClass('skip');
-                        }else{
-                            $(".comicContent li:first-child").removeClass('skip');
-                        }
-                    },
-                    switch_page: function(){
-                        this.page=!this.page
-                        $.cookie('page_double',this.page,{expires:999999,path:'/'});
-                        if (this.page){
-                            $('html').addClass('page_double');
-                        }else{
-                            $('html').removeClass('page_double');
-                        }
-                        $("html").animate({scrollTop: $("#img_"+img_id).offset().top}, 0);
-                    },
-                }
-            })
-            //添加侧边目录栏
-            let sidebar=`
-<div id="sidebar" @mouseleave="drawer=false">
-<div id="toggle" @mouseover="drawer=true" style="top:0px;left:0px;height:100vh;width:20vw;position: fixed;"></div>
-<el-drawer
-title="我是标题"
-:size="size"
-:modal="modal"
-:visible="drawer"
-:with-header="false"
-:direction="direction"
-@open="handleOpen">
-<el-menu background-color="transparent"
-text-color="#fff"
-active-text-color="#ffd04b"
-@select="handleSelect">
-<template v-for="(item, index) in items">
-<el-menu-item v-bind:index="index">{{item.title}}</el-menu-item>
-</template>
-</el-menu>
-</el-drawer>
-</div>`
-            let $sidebar = $(sidebar);
-            $("body").append($sidebar);
-            //vue绑定侧边目录栏
-            var sidebar_app = new Vue({
-                el: '#sidebar',
-                data: {
-                    drawer: false,
-                    size:'100%',
-                    modal:false,
-                    direction: 'ltr',
-                    items: [],
-                },
-                methods:{
-                    handleSelect(key) {
-                        location.href=this.items[key].href;
-                    },
-                    handleOpen() {
-                        setTimeout(function(){
-                            $('.el-drawer__body').animate({scrollTop:0}, 0);
-                            $('.el-drawer__body').animate({scrollTop:$('.el-menu>li:nth-child('+(ch_id-1)+')').offset().top-$('.el-drawer__body').offset().top}, 0);
-                        },0)
-                    },
-                }
-            })
-            //加载目录
-            function menu(){
-                let $border=$('#default全部 .table-all a', el.contents());
-                if ($border.length==0){
-                    setTimeout(menu,100);
-                    return;
-                }
-                $.each($border,function(index){
-                    if (location.href.indexOf(this.href)>=0){
-                        ch_id=index;
-                        GM_addStyle('.el-menu>li:nth-child('+(ch_id+1)+'){background:rgba(255,165,0,.5) !important}')
-                    }
-                    sidebar_app.items.push({
-                        title:this.text,
-                        href:this.href,
-                    })
-                })
-            }
-            menu();
-            })
+    // 加载 HTML
+    document.querySelectorAll('html')[0].innerHTML = `
+<head></head>
+<body>
+  <div id="app">
+    <div @mouseleave="drawer=false">
+      <div @mouseover="drawer=true" style="top:0px;left:0px;height:100vh;width:20vw;position: fixed;"></div>
+      <el-drawer
+        id="sidebar"
+        :size="size"
+        :modal="modal"
+        :visible="drawer"
+        :with-header="false"
+        :direction="direction"
+        @open="handleOpen">
+        <el-menu
+          background-color="transparent"
+          text-color="#fff"
+          active-text-color="#ffd04b"
+          @select="handleSelect">
+          <template v-for="(item, index) in sidebar_data">
+            <el-menu-item v-bind:index="index">{{item.title}}</el-menu-item>
+          </template>
+        </el-menu>
+      </el-drawer>
+    </div>
+    <div id="matrix">
+      <template v-for="(item, index) in comic_data">
+        <img class="inner_img" v-bind:src="item.url">
+      </template>
+    </div>
+    <div id="info" @mouseover="show=1" @mouseleave="show=0">
+      <transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
+      <template v-if="show"><div id="info_page" class="info_item" @click="switch_page" style="cursor:pointer;">{{message_page}}</div></template></transition>
+      <transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
+      <template v-if="show"><div id="info_skip" class="info_item" @click="switch_skip" style="cursor:pointer;">{{message_skip}}</div></template></transition>
+      <transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
+      <template v-if="show"><div id="info_switch" class="info_item" @click="switch_night" style="cursor:pointer;">{{message_switch}}</div></template></transition>
+      <transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
+      <template v-if="show"><div id="info_full" class="info_item" @click="switch_full" style="cursor:pointer;">{{message_full}}</div></template></transition>
+      <template><div id="info_count" class="info_item">{{message_count}}</div></template>
+    </div>
+  </div>
+  <style>
+    body {
+      text-align: center;
+      font-size: 12px;
+      line-height: normal;
+      background: #edecea;
     }
+    body.dark {
+      background: #212121;
+    }
+    ::-webkit-scrollbar {
+      width: 4px;height: 0px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background-color: rgb(48,48,48);
+      border-radius: 2px;
+    }
+    #matrix {
+      display: grid;
+      justify-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+      user-select: none;
+    }
+    .page #matrix {
+      display: flex;
+      flex-direction: row-reverse;
+      flex-wrap: wrap;
+    }
+    .page .inner_img {
+      height: 100vh;
+    }
+    .el-menu {
+      border-right: 0px;
+    }
+    .el-drawer__wrapper {
+      width: 20%;
+    }
+    .el-drawer {
+      background: transparent;
+    }
+    .el-drawer__body {
+      background: rgba(0,0,0,.8);
+      overflow-y: auto
+    }
+    #info {
+        bottom: 2%;
+        right: 2%;
+        padding: 5px 5px;
+        background: rgba(48,48,48,.7);
+        position: fixed;
+        color: rgba(255,255,255,.7);
+        border-radius: 3px;
+    }
+    .info_item {
+        padding:5px 0px;
+        width:120px;
+    }
+    .skip .blank{
+      display:none;
+    }
+  </style>
+</body>
+`;
+
+    // 加载 LocalStorage
+    let dark = store.get('dark') == true;
+    let skip = store.get('skip') == true;
+    let page = store.get('page') == true;
+    if (dark) {
+        document.body.classList.add('dark');
+    }
+    if (skip) {
+        document.body.classList.add('skip');
+    }
+    if (page) {
+        document.body.classList.add('page');
+    }
+
+    // 加载 Vue
+    var app = new Vue({
+        el: '#app',
+        data: {
+            drawer: false,
+            size: '100%',
+            modal: false,
+            direction: 'ltr',
+            sidebar_data: [], // 章节数据源
+            comic_data: [],   // 图片数据源
+            cur_lock: 0,
+            cur_id: 0,
+            cur_ch: 0,
+            dark: dark,
+            page: page,
+            skip: skip,
+            show: 0,
+            full: 0,
+        },
+        computed: {
+            message_full: function () {
+                return this.full ? '↩️退出全屏' : '↕️进入全屏'
+            },
+            message_switch: function () {
+                return this.dark ? '☀️日间模式' : '🌙夜间模式'
+            },
+            message_page: function () {
+                return this.page ? '1️⃣单页排布' : '2️⃣双页排布'
+            },
+            message_skip: function () {
+                return this.skip ? '📑添加空页' : '📄移除空页'
+            },
+            message_count: function () {
+                return (this.skip ? (this.cur_id <= 1 ? this.cur_id : this.cur_id - 1) : this.cur_id) + '/' + (this.comic_data.length + 1 - this.skip)
+            }
+        },
+        methods: {
+            handleSelect(key) {
+                location.href = this.sidebar_data[key].href;
+            },
+            handleOpen() {
+                setTimeout(() => {
+                    let sidebar = document.getElementsByClassName('el-drawer__body')[0],
+                        ch_list = sidebar.children[0].children;
+                    sidebar.scrollTop = ch_list[Math.max(app.cur_ch - 2, 0)].offsetTop;
+                }, 0);
+            },
+            switch_full: function () {
+                this.full = !this.full
+                if (this.full) {
+                    document.documentElement.requestFullscreen()
+                } else {
+                    document.exitFullscreen();
+                }
+            },
+            switch_night: function () {
+                this.dark = !this.dark
+                store.set('dark', this.dark);
+                document.body.classList.toggle('dark');
+            },
+            switch_skip: function () {
+                this.skip = !this.skip
+                store.set('skip', this.skip);
+                document.body.classList.toggle('skip');
+            },
+            switch_page: function () {
+                this.page = !this.page
+                store.set('page', this.page);
+                document.body.classList.toggle('page');
+            },
+        }
+    });
+
+    // 加载 CSS
+    const element_css = GM_getResourceText("element_css");
+    const animate_css = GM_getResourceText("animate_css");
+    GM_addStyle(element_css);
+    GM_addStyle(animate_css);
+
+    // 加载图片
+    var comic = window['location']['pathname']['split']('/')[0x2],
+        chapter = window['location']['pathname']['split']('/')[0x4];
+    axios.get('https://api.copymanga.com/api/v3/comic/' + comic + '/chapter2/' + chapter, {
+        params: { 'timeout': 0x2710 }
+    }).then(function (response) {
+        var content = response.data.results.chapter.contents,
+            matrix = document.getElementById('matrix'),
+            words = response.data.results.chapter.words,
+            size = response.data.results.chapter.size,
+            dict = {};
+        for (var i = 0; i < size; i++) dict[words[i]] = i;
+        for (var i = 0; i < size; i++) {
+            app.comic_data.push({
+                url: content[dict[i]].url
+            })
+        }
+        // TODO
+        setTimeout(() => {
+            let $blank = $('.inner_img:eq(0)').clone();
+            $blank.addClass('blank');
+            $blank.css('filter', 'brightness(0) invert(1)');
+            $('#matrix').prepend($blank);
+        }, 0);
+    })
+
+    // 加载章节
+    axios.get('https://api.copymanga.com/api/v3/comic/' + comic + '/group/default/chapters?limit=0', {
+        params: { 'timeout': 0x2710 }
+    }).then(function (response) {
+        var content = response.data.results.list;
+        content.forEach((i) => {
+            if (location.href.indexOf(i.uuid) >= 0) {
+                app.cur_ch = i.index;
+                GM_addStyle('.el-menu>li:nth-child(' + (i.index + 1) + '){background:rgba(255,165,0,.5) !important}');
+            }
+            app.sidebar_data.push({
+                title: i.name,
+                href: 'https://copymanga.com/comic/' + comic + '/chapter/' + i.uuid
+            })
+        })
+    })
+
+    //上下方向键滚动页面，左右方向键切换章节
+    function scrollUp() {
+        let img_list = document.querySelectorAll('.inner_img'),
+            first_img = img_list[app.skip ? 1 : 0],
+            last_img = img_list[img_list.length - 1];
+        if (app.cur_id == 0) return;
+        var id = img_list.length + 1;
+        for (var i = (app.skip ? 1 : 0) + 1; i <= Math.min(app.cur_id, img_list.length); i++) {
+            if (((app.cur_lock && app.cur_id >= 1 && app.cur_id <= img_list.length) ? img_list[app.cur_id - 1].offsetTop : pageYOffset) < img_list[i - 1].offsetTop + img_list[i - 1].offsetHeight + 5) {
+                id = i;
+                break;
+            }
+        }
+        if (((app.cur_lock && app.cur_id >= 1 && app.cur_id <= img_list.length) ? img_list[app.cur_id - 1].offsetTop : pageYOffset) < first_img.offsetTop + 5) {
+            id = 0;
+        }
+        app.cur_lock++;
+        app.cur_id = id;
+        setTimeout(function () { app.cur_lock--; }, 500);
+        // TODO
+        $("html").stop();
+        if (id == 0) {
+            $("html").animate({ scrollTop: 0 }, 500);
+        } else {
+            $("html").animate({ scrollTop: img_list[id - 1].offsetTop }, 500);
+        }
+    }
+    function scrollDown() {
+        let img_list = document.querySelectorAll('.inner_img'),
+            first_img = img_list[app.skip ? 1 : 0],
+            last_img = img_list[img_list.length - 1];
+        if (app.cur_id == img_list.length + 1) return;
+        var id = img_list.length + 1;
+        for (var i = Math.max(app.cur_id, (app.skip ? 1 : 0) + 1); i <= img_list.length; i++) {
+            if (((app.cur_lock && app.cur_id >= 1 && app.cur_id <= img_list.length) ? img_list[app.cur_id - 1].offsetTop : pageYOffset) < img_list[i - 1].offsetTop - 5) {
+                id = i;
+                break;
+            }
+        }
+        app.cur_lock++;
+        app.cur_id = id;
+        setTimeout(function () { app.cur_lock--; }, 500);
+        // TODO
+        $("html").stop();
+        if (id == img_list.length + 1) {
+            $("html").animate({ scrollTop: last_img.offsetTop + last_img.offsetHeight }, 500);
+        } else {
+            $("html").animate({ scrollTop: img_list[id - 1].offsetTop }, 500);
+        }
+    }
+    document.getElementById('matrix').onclick = function (event) {
+        if (event.clientY > $(window).height() / 2) {
+            if (app.page) scrollDown();
+        } else {
+            if (app.page) scrollUp();
+        }
+    }
+    document.body.onkeydown = function (event) {
+        if (event.keyCode == 38) {
+            if (app.page) scrollUp();
+        } else if (event.keyCode == 40) {
+            if (app.page) scrollDown();
+        } else if (event.keyCode == 37) {
+            location.href = app.sidebar_data[app.cur_ch - 1].href;
+        } else if (event.keyCode == 39) {
+            location.href = app.sidebar_data[app.cur_ch + 1].href;
+        } else if (event.keyCode == 13) {
+            app.switch_full();
+        }
+    }
+
+    // 加载当前页码
+    function getID() {
+        let cur_id = 0,
+            img_list = document.querySelectorAll('.inner_img'),
+            first_img = img_list[app.skip ? 1 : 0],
+            last_img = img_list[img_list.length - 1];
+        if (img_list.length > 0) {
+            img_list.forEach((i, index) => {
+                if (pageYOffset > i.offsetTop - 5 && pageYOffset < i.offsetTop + i.offsetHeight - 5 && cur_id == 0) {
+                    cur_id = index + 1;
+                }
+            });
+            if (pageYOffset > last_img.offsetTop + last_img.offsetHeight - 5)
+                cur_id = img_list.length + 1;
+            if (app.cur_lock == 0) app.cur_id = cur_id;
+        }
+    }
+    setInterval(getID, 100);
+    window.addEventListener('mousewheel', getID);
 })();
