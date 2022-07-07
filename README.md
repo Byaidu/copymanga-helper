@@ -4,18 +4,6 @@
 
 https://greasyfork.org/zh-CN/scripts/421371
 
-## ⚠️若无法正常使用请安装 User-Agent Switcher and Manager 插件切换浏览器 UA⚠️
-
-目前已知 Chrome 103.0.0.0 无法正常访问拷贝漫画
-
-插件下载地址：https://chrome.google.com/webstore/detail/user-agent-switcher-and-m/bhchdcejhohfmigjafbampogmaanbfkg
-
-## ⚠️若使用 Tampermonkey，请设置即时注入模式以避免页面闪烁⚠️
-
-1. **油猴 -> 设置 -> 通用 -> 配置模式** 设置为 **高级**
-
-2. **油猴 -> 设置 -> 实验 -> 注入模式** 设置为 **即时**
-
 ## 功能列表
 
 - 去除全站所有页面的广告和二维码
