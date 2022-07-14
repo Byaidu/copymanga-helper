@@ -1,11 +1,17 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      7.7
+// @version      8.1
 // @description  拷贝漫画去广告🚫、加速访问🚀、批量下载⬇️、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
 // @match        *://*.copymanga.org/*
+// @match        *://*.copymanga.net/*
+// @match        *://*.copymanga.info/*
+// @match        *://copymanga.com/*
+// @match        *://copymanga.org/*
+// @match        *://copymanga.net/*
+// @match        *://copymanga.info/*
 // @license      GNU General Public License v3.0 or later
 // @resource     element_css https://unpkg.com/element-ui@2.15.0/lib/theme-chalk/index.css
 // @resource     animate_css https://unpkg.com/animate.css@4.1.1/animate.min.css
@@ -22,16 +28,47 @@
 // @run-at       document-start
 // ==/UserScript==
 
-var large_mode = 0;
+var large_mode = 1;
 
-if (document.getElementsByClassName('ban').length) banPage();
-else if (/^\/comic\/.*\/.*$/.test(location.pathname)) comicPage();
-else if (/^\/comic\/[^\/]*$/.test(location.pathname)) tablePage();
-else if (/^\/$/.test(location.pathname)) homePage();
+function route(){
+    if (document.getElementsByClassName('ban').length) banPage();
+    else if (/^\/comic\/.*\/.*$/.test(location.pathname)) comicPage();
+    else if (/^\/comic\/[^\/]*$/.test(location.pathname)) tablePage(1);
+    else if (/^\/$/.test(location.pathname)) homePage();
+    else if (/^\/h5\/details\/comic\/[^\/]*$/.test(location.pathname)) tablePage(0);
+}
 
-function loadCSS(){
-    var element_css = GM_getResourceText("element_css"),
+route();
+
+if (/^\/h5\/.*$/.test(location.pathname)){
+    let previousUrl = location.href;
+    const observer = new MutationObserver(function(mutations) {
+      if (location.href !== previousUrl) {
+          previousUrl = location.href;
+          route();
+        }
+    });
+    const config = {subtree: true, childList: true};
+    observer.observe(document, config);
+}
+
+async function loadCSS(){
+    var element_css, animate_css;
+    if (typeof(GM_getResourceText)=='undefined'){
+        await axios.get('https://unpkg.com/element-ui@2.15.0/lib/theme-chalk/index.css', {
+            params: { 'timeout': 0x2710 }
+        }).then(function (response) {
+            element_css = response.data;
+        })
+        await axios.get('https://unpkg.com/animate.css@4.1.1/animate.min.css', {
+            params: { 'timeout': 0x2710 }
+        }).then(function (response) {
+            animate_css = response.data;
+        })
+    }else{
+        element_css = GM_getResourceText("element_css");
         animate_css = GM_getResourceText("animate_css");
+    }
     GM_addStyle(element_css);
     GM_addStyle(animate_css);
 }
@@ -50,22 +87,29 @@ function homePage() {
     GM_addStyle('.header-jum {display:none;}');
 }
 
-function tablePage() {
+function tablePage(isPC) {
     loadCSS();
     var collect, save,
-        comic = window.location.pathname.split('/')[2],
+        comic,
         content_comic = [],
         app;
+    if (isPC)
+        comic = window.location.pathname.split('/')[2];
+    else
+        comic = window.location.pathname.split('/')[4];
     $(async ()=>{
       GM_addStyle('.comicParticulars-botton:nth-of-type(4) {background: lightskyblue;}');
-      collect = document.getElementsByClassName('collect')[0];
+      if (isPC)
+          collect = document.getElementsByClassName('collect')[0];
+      else
+          collect = document.getElementsByTagName('button')[2];
       save = collect.cloneNode();
       save.innerHTML = '批量下载';
       save.onclick = saveComic;
       collect.after(save);
       app_html = document.createElement("div");
       app_html.innerHTML=`
-<div id="app" style="margin-top:18px;">
+<div id="app_save">
   下载范围：
   <el-select v-model="begin" placeholder="起始话" size="mini" style="width:100px;">
     <el-option
@@ -87,8 +131,12 @@ function tablePage() {
 </div>
 `
       collect.after(app_html);
+      if (isPC)
+          document.getElementById('app_save').setAttribute('style','margin-top:18px;');
+      else
+          document.getElementsByClassName('detailsTextContentItem')[0].setAttribute('style','flex-wrap:wrap;');
       app = new Vue({
-        el: '#app',
+        el: '#app_save',
         data: {
           content_comic: [],
           begin: '',
@@ -110,7 +158,8 @@ function tablePage() {
   
     async function saveComic() {
       var zip = new JSZip();
-      var task_cnt = 0;
+      var task_cnt = 0,
+          comic_name;
       for (var idx = app.begin; idx <= app.end; idx++) {
           i = content_comic[idx];
           task_cnt++;
@@ -124,6 +173,7 @@ function tablePage() {
                   words = response.data.results.chapter.words,
                   size = content.length,
                   dict = {};
+              comic_name = response.data.results.comic.name;
               for (var i = 0; i < size; i++) dict[words[i]] = i;
               for (var i = 0; i < size; i++) {
                   (()=>{
@@ -147,7 +197,7 @@ function tablePage() {
       zip.generateAsync({type:"blob"},function (metadata) {
           save.innerHTML = metadata.percent.toFixed(0) + '%';
       }).then(function (blob) {
-          saveAs(blob, comic + ".zip");
+          saveAs(blob, comic_name + ".zip");
           save.innerHTML = '下载完成';
       })
     }
@@ -163,7 +213,9 @@ async function comicPage() {
 
     // 加载 HTML
     document.querySelectorAll('html')[0].innerHTML = `
-<head></head>
+<head>
+  <link rel="icon" href="https://hi.xsskc.com/static/free.ico" type="image/x-icon">
+</head>
 <body>
   <div id="app">
     <div @mouseleave="drawer=false">
