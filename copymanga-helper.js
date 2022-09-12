@@ -109,7 +109,16 @@ function apiChapters(comic) {
                 'padding': CryptoJS.pad.Pkcs7
               }
             ).toString(CryptoJS.enc.Utf8));
-        result.groups.default.chapters.forEach((i, index)=>{i.index = index;});
+        let type_map = new Map();
+        result.build.type.forEach((v, index) => {
+            type_map.set(v.id, v.name);
+        });
+        result.groups.default.chapters.forEach((v, index) => {
+            v.index = index;
+            let type_name = type_map.get(v.type);
+            v.name = "【" + type_name + "】" + v.name;
+            v.type_name = type_name;
+        });
         return result;
     })
 }
@@ -138,7 +147,7 @@ function tablePage(isPC) {
       app_html.innerHTML=`
 <div id="app_save">
   下载范围：
-  <el-select v-model="begin" placeholder="起始话" size="mini" style="width:100px;">
+  <el-select v-model="begin" placeholder="起始话" size="mini" style="width:150px;">
     <el-option
       v-for="item in content_comic"
       :key="item.index"
@@ -147,7 +156,7 @@ function tablePage(isPC) {
     </el-option>
   </el-select>
   至
-  <el-select v-model="end" placeholder="终止话" size="mini" style="width:100px;margin-right:20px;">
+  <el-select v-model="end" placeholder="终止话" size="mini" style="width:150px;margin-right:20px;">
     <el-option
       v-for="item in content_comic"
       :key="item.index"
@@ -198,31 +207,47 @@ function tablePage(isPC) {
     })
   
     async function saveComic() {
-      var zip = new JSZip();
-      var task_cnt = 0,
-          comic_name;
-      for (var idx = app.begin; idx <= app.end; idx++) {
-          i = content_comic[idx];
+      let zip = new JSZip();
+      let task_cnt = 0;
+      let date_created_chapter_map = new Map();
+      let comic_name = null;
+      for (let idx = app.begin; idx <= app.end; idx++) {
+          let c = content_comic[idx];
           task_cnt++;
           save.innerHTML = task_cnt + '/' + (app.end - app.begin + 1);
-          await axios.get('https://api.copymanga.site/api/v3/comic/' + comic + '/chapter2/' + i.id)
+          await axios.get('https://api.copymanga.site/api/v3/comic/' + comic + '/chapter2/' + c.id)
           .then(async function (response) {
-              var task_chapter = [];
-              var img = zip.folder(response.data.results.comic.name).folder(response.data.results.chapter.name);
-              var content = response.data.results.chapter.contents,
+              let task_chapter = [];
+              let dir_chpt_name = response.data.results.chapter.name
+              if (c.type_name !== undefined) {
+                  dir_chpt_name = "【" + c.type_name + "】" + dir_chpt_name;
+              }
+              let dir_comic = zip.folder(response.data.results.comic.name)
+              let content = response.data.results.chapter.contents,
                   words = response.data.results.chapter.words,
                   size = content.length,
                   dict = {};
               comic_name = response.data.results.comic.name;
-              for (var i = 0; i < size; i++) dict[words[i]] = i;
-              for (var i = 0; i < size; i++) {
+              let date_created_chapter = new Date(response.data.results.chapter.datetime_created);
+              if (idx != app.begin && date_created_chapter.getTime() <= date_created_chapter_map.get(idx - 1).getTime()) {
+                  date_created_chapter = new Date(date_created_chapter_map.get(idx - 1).getTime() + 2000);
+              }
+              date_created_chapter_map.set(idx, date_created_chapter);
+              dir_comic.file(dir_chpt_name, null, {
+                  dir: true,
+                  date: date_created_chapter,
+              });
+              let dir_chpt = dir_comic.folder(dir_chpt_name);
+              for (let i = 0; i < size; i++) dict[words[i]] = i;
+              for (let i = 0; i < size; i++) {
                   (()=>{
-                    var self = i;
-                    var img_url = content[dict[i]].url;
+                    let self = i;
+                    let img_url = content[dict[i]].url;
                     if (large_mode) img_url = img_url.replace('c800x.jpg','c1500x.jpg');
                     task_chapter.push(axios.get(img_url, {responseType: 'arraybuffer'})
                     .then(function (response) {
-                        img.file(self + '.jpg', response.data);
+                        let date_created_file = new Date(date_created_chapter.getTime() + 2000 * self);
+                        dir_chpt.file((self + 1) + '.jpg', response.data, {date: date_created_file});
                     }).catch(function (error) {
                         save.innerHTML = '下载失败';
                     }))
