@@ -1,19 +1,21 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      9.7
-// @description  拷贝漫画去广告🚫、加速访问🚀、批量下载⬇️、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
+// @version      10.6
+// @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
 // @match        *://*.copymanga.org/*
 // @match        *://*.copymanga.net/*
 // @match        *://*.copymanga.info/*
 // @match        *://*.copymanga.site/*
+// @match        *://*.copymanga.tv/*
 // @match        *://copymanga.com/*
 // @match        *://copymanga.org/*
 // @match        *://copymanga.net/*
 // @match        *://copymanga.info/*
 // @match        *://copymanga.site/*
+// @match        *://copymanga.tv/*
 // @license      GNU General Public License v3.0 or later
 // @resource     element_css https://unpkg.com/element-ui@2.15.0/lib/theme-chalk/index.css
 // @resource     animate_css https://unpkg.com/animate.css@4.1.1/animate.min.css
@@ -40,9 +42,10 @@ axios.interceptors.response.use(undefined, (err) => {
 
 function route(){
     if (document.getElementsByClassName('ban').length) banPage();
-    else if (/^\/comic\/.*\/.*$/.test(location.pathname)) comicPage();
-    else if (/^\/comic\/[^\/]*$/.test(location.pathname)) tablePage(1);
+    else if (/^\/comic\/.*\/.*$/.test(location.pathname)) comicPage(1);
+    //else if (/^\/comic\/[^\/]*$/.test(location.pathname)) tablePage(1);
     else if (/^\/$/.test(location.pathname)) homePage();
+    else if (/^\/h5\/comicContent\/.*\/.*$/.test(location.pathname)) comicPage(0);
     else if (/^\/h5\/details\/comic\/[^\/]*$/.test(location.pathname)) tablePage(0);
 }
 
@@ -205,7 +208,7 @@ function tablePage(isPC) {
           }
       })
     })
-  
+
     async function saveComic() {
       let zip = new JSZip();
       let task_cnt = 0;
@@ -267,13 +270,17 @@ function tablePage(isPC) {
     }
 }
 
-async function comicPage() {
+async function comicPage(isPC) {
     // 停止加载原生网页
     window.stop();
 
     // 解析 URL
-    var comic = window.location.pathname.split('/')[2],
-        chapter = window.location.pathname.split('/')[4];
+    var comic, chapter;
+    if (isPC)
+        comic = window.location.pathname.split('/')[2];
+    else
+        comic = window.location.pathname.split('/')[3];
+    chapter = window.location.pathname.split('/')[4];
 
     // 加载 HTML
     document.querySelectorAll('html')[0].innerHTML = `
@@ -281,7 +288,7 @@ async function comicPage() {
 <body>
   <div id="app">
     <div @mouseleave="drawer=false">
-      <div @mouseover="drawer=true" style="top:0px;left:0px;height:100vh;width:20vw;position: fixed;"></div>
+      <div @mouseover="drawer=true" style="top:0px;left:0px;height:100vh;width:10vw;position: fixed;"></div>
       <el-drawer
         id="sidebar"
         :size="size"
@@ -313,14 +320,16 @@ async function comicPage() {
         </li>
       </template>
     <ul>
-    <el-input v-model="comment_input" placeholder="吐槽" style="width:500px;margin:20px;" @keyup.enter.native="send_comment" @focus="is_input=1" @blur="is_input=0">
-      <el-button slot="append" type="primary" @click="send_comment">发表</el-button>  
+    <el-input v-model="comment_input" placeholder="吐槽" style="width:300px;margin:20px;" @keyup.enter.native="send_comment" @focus="is_input=1" @blur="is_input=0">
+      <el-button slot="append" type="primary" @click="send_comment">发表</el-button>
     </el-input>
     <ul style="margin-bottom:20px;">
-      <el-button type="primary" @click="prev_chapter">上一章</el-button> 
+      <el-button type="primary" @click="prev_chapter">上一章</el-button>
       <el-button type="primary" @click="next_chapter">下一章</el-button>
     </ul>
     <div id="info" @mouseover="show=1" @mouseleave="show=0">
+      <transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
+      <template v-if="show"><div id="info_scroll" class="info_item" @click="switch_scroll" style="cursor:pointer;">{{message_scroll}}</div></template></transition>
       <transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
       <template v-if="show"><div id="info_page" class="info_item" @click="switch_page" style="cursor:pointer;">{{message_page}}</div></template></transition>
       <transition name="custom-classes-transition" enter-active-class="animate__animated animate__fadeIn" leave-active-class="animate__animated animate__fadeOut">
@@ -365,6 +374,18 @@ async function comicPage() {
       display: flex;
       flex-direction: row-reverse;
       flex-wrap: wrap;
+    }
+    .scroll #matrix {
+      display: flex;
+      flex-direction: row-reverse;
+      flex-wrap: wrap;
+      justify-content: unset;
+      flex-wrap: unset;
+      overflow-x: scroll;
+    }
+    .scroll .inner_img {
+      height: 100vh;
+      object-fit: contain;
     }
     .page .inner_img {
       height: 100vh;
@@ -431,13 +452,14 @@ async function comicPage() {
   </style>
 </body>
 `;
-  
+
     loadCSS();
 
     // 加载 LocalStorage
     let dark = store.get('dark') == true;
     let skip = store.get('skip') == true;
     let page = store.get('page') == true;
+    let scroll = store.get('scroll') == true;
     if (dark) {
         document.body.classList.add('dark');
     }
@@ -446,6 +468,9 @@ async function comicPage() {
     }
     if (page) {
         document.body.classList.add('page');
+    }
+    if (scroll) {
+        document.body.classList.add('scroll');
     }
 
     // 加载 Vue
@@ -467,6 +492,7 @@ async function comicPage() {
             dark: dark,
             page: page,
             skip: skip,
+            scroll: scroll,
             show: 0,
             full: 0,
         },
@@ -485,6 +511,9 @@ async function comicPage() {
             },
             message_skip: function () {
                 return this.skip ? '📑添加空页' : '📄移除空页';
+            },
+            message_scroll: function () {
+                return this.scroll ? '⏬纵向滚动' : '⏪横向滚动';
             },
             message_count: function () {
                 return (this.skip ? (this.cur_id <= 1 ? this.cur_id : this.cur_id - 1) : this.cur_id) + '/' + (this.comic_data.length + 1 - this.skip);
@@ -527,6 +556,11 @@ async function comicPage() {
                 store.set('page', this.page);
                 document.body.classList.toggle('page');
             },
+            switch_scroll: function () {
+                this.scroll = !this.scroll;
+                store.set('scroll', this.scroll);
+                document.body.classList.toggle('scroll');
+            },
             send_comment: async function () {
                 let token = await cookieStore.get('token');
                 await axios.post('https://api.copymanga.net/api/v3/member/roast', 'chapter_id=' + chapter + '&roast=' + this.comment_input + '&_update=true',{
@@ -554,7 +588,7 @@ async function comicPage() {
     });
 
     // 加载图片
-    axios.get('https://api.copymanga.site/api/v3/comic/' + comic + '/chapter2/' + chapter)
+    axios.get('https://api.copymanga.site/api/v3/comic/' + comic + '/chapter2/' + chapter,{headers:{'user-agent': ''}})
     .then(function (response) {
         document.title = response.data.results.comic.name + ' - ' + response.data.results.chapter.name;
         var content = response.data.results.chapter.contents,
@@ -594,7 +628,7 @@ async function comicPage() {
             })
         })
     })
-  
+
     // 加载评论
     app.load_comment();
 
@@ -661,11 +695,15 @@ async function comicPage() {
               if (app.page) scrollUp();
           } else if (event.keyCode == 40) {
               if (app.page) scrollDown();
-          } else if (event.keyCode == 37) {
-              app.prev_chapter();
-          } else if (event.keyCode == 39) {
-              app.next_chapter();
-          } else if (event.keyCode == 13) {
+          }
+          if (!app.scroll){
+            if (event.keyCode == 37) {
+                app.prev_chapter();
+            } else if (event.keyCode == 39) {
+                app.next_chapter();
+            }
+          }
+          if (event.keyCode == 13) {
               app.switch_full();
           } else if (event.keyCode == 8) {
               location.href = 'https://copymanga.site/comic/' + comic;
@@ -692,4 +730,13 @@ async function comicPage() {
     }
     setInterval(getID, 100);
     window.addEventListener('mousewheel', getID);
+    window.addEventListener('error', event => {
+        let target = event.target || event.srcElement;
+        let isElementTarget = target instanceof HTMLImageElement;
+        if (!isElementTarget) return false;
+        let url = target.src;
+        setTimeout(() => {
+            target.src = url;
+        }, Math.floor(Math.random() * 2000) + 1);
+    }, true);
 }
