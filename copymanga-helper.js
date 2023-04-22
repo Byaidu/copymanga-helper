@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      10.7
+// @version      10.8
 // @description  拷贝漫画去广告🚫、加速访问🚀、批量下载⬇️、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
@@ -201,9 +201,9 @@ function tablePage(isPC) {
                     }).then(function (response) {
                         if (response.data.results.browse != null) {
                             var read = document.getElementsByClassName('comicParticulars-botton')[0];
-                            read.innerHTML = '续读：' + response.data.results.browse.chapter_name;
+                            read.innerHTML = response.data.results.browse.chapter_name;
                             read.href = 'https://copymanga.site/comic/' + comic + '/chapter/' + response.data.results.browse.chapter_uuid;
-                            GM_addStyle('.comicParticulars-botton {width:unset !important;min-width:80px;}');
+                            GM_addStyle('.comicParticulars-botton {max-width:80px; overflow: hidden;text-overflow: ellipsis; white-space: nowrap;}');
                         }
                     });
                 }
@@ -591,6 +591,7 @@ async function comicPage() {
     // 加载图片
     axios.get('https://api.copymanga.site/api/v3/comic/' + comic + '/chapter/' + chapter)
         .then(function (response) {
+            document.title = response.data.results.comic.name + ' - ' + response.data.results.chapter.name;
             var content = response.data.results.chapter.contents,
                 matrix = document.getElementById('matrix'),
                 size = content.length,
@@ -693,15 +694,15 @@ async function comicPage() {
                 if (app.page) scrollUp();
             } else if (event.keyCode == 40) {
                 if (app.page) scrollDown();
-          }
-          if (!app.scroll){
-            if (event.keyCode == 37) {
-                app.prev_chapter();
-            } else if (event.keyCode == 39) {
-                app.next_chapter();
             }
-          }
-          if (event.keyCode == 13) {
+            if (!app.scroll) {
+                if (event.keyCode == 37) {
+                    app.prev_chapter();
+                } else if (event.keyCode == 39) {
+                    app.next_chapter();
+                }
+            }
+            if (event.keyCode == 13) {
                 app.switch_full();
             } else if (event.keyCode == 8) {
                 location.href = 'https://copymanga.site/comic/' + comic;
