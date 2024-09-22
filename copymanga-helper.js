@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      10.8
-// @description  拷贝漫画去广告🚫、加速访问🚀、批量下载⬇️、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
+// @version      11.4
+// @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
 // @match        *://*.copymanga.org/*
@@ -10,12 +10,14 @@
 // @match        *://*.copymanga.info/*
 // @match        *://*.copymanga.site/*
 // @match        *://*.copymanga.tv/*
+// @match        *://*.mangacopy.com/*
 // @match        *://copymanga.com/*
 // @match        *://copymanga.org/*
 // @match        *://copymanga.net/*
 // @match        *://copymanga.info/*
 // @match        *://copymanga.site/*
 // @match        *://copymanga.tv/*
+// @match        *://mangacopy.com/*
 // @license      GNU General Public License v3.0 or later
 // @resource     element_css https://unpkg.com/element-ui@2.15.13/lib/theme-chalk/index.css
 // @resource     animate_css https://unpkg.com/animate.css@4.1.1/animate.min.css
@@ -33,7 +35,8 @@
 // @run-at       document-start
 // ==/UserScript==
 
-var large_mode = 1;
+var largeMode = 1;
+var enableDownload = 0;
 
 // retry
 axios.interceptors.response.use(undefined, (err) => {
@@ -42,15 +45,16 @@ axios.interceptors.response.use(undefined, (err) => {
 
 function route() {
     if (document.getElementsByClassName('ban').length) banPage();
-    else if (/^\/comic\/.*\/.*$/.test(location.pathname)) comicPage();
+    else if (/^\/comic\/.*\/.*$/.test(location.pathname)) comicPage(1);
     else if (/^\/comic\/[^\/]*$/.test(location.pathname)) tablePage(1);
     else if (/^\/$/.test(location.pathname)) homePage();
     else if (/^\/h5\/details\/comic\/[^\/]*$/.test(location.pathname)) tablePage(0);
+    else if (/^\/h5\/comicContent\/.*$/.test(location.pathname)) comicPage(0);
 }
 
 route();
 
-if (/^\/h5\/.*$/.test(location.pathname)) {
+if (/^\/h5.*$/.test(location.pathname)) {
     let previousUrl = location.href;
     const observer = new MutationObserver(function (mutations) {
         if (location.href !== previousUrl) {
@@ -95,8 +99,30 @@ function homePage() {
     GM_addStyle('.header-jum {display:none;}');
 }
 
-function apiChapters(comic) {
-    return axios.get('https://www.copymanga.site/comicdetail/' + comic + '/chapters', { headers: { 'user-agent': '' } })
+function makeRequest(url,isPC) {
+    if (isPC) {
+        // axios
+        return axios.get(url)
+    } else {
+        // gm绕过ua
+        return new Promise((resolve, reject) => {
+          GM_xmlhttpRequest({
+            url: url,
+            headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'},
+            responseType:'json',
+            onload: function(response) {
+              resolve({data:response.response});
+            },
+            onerror: function(error) {
+              reject(error);
+            }
+          });
+        });
+    }
+}
+
+function apiChapters(comic,isPC) {
+    return makeRequest('https://www.mangacopy.com/comicdetail/' + comic + '/chapters',isPC)
         .then((response) => {
             let iv = response.data.results.substring(0, 16),
                 cipher = response.data.results.substring(16),
@@ -136,65 +162,67 @@ function tablePage(isPC) {
     else
         comic = window.location.pathname.split('/')[4];
     $(() => {
-        GM_addStyle('.comicParticulars-botton:nth-of-type(4) {background: lightskyblue;}');
-        if (isPC)
-            collect = document.getElementsByClassName('collect')[0];
-        else
-            collect = document.getElementsByTagName('button')[2];
-        save = collect.cloneNode();
-        save.innerHTML = '批量下载';
-        save.onclick = saveComic;
-        collect.after(save);
-        var app_html = document.createElement("div");
-        app_html.innerHTML = `
-<div id="app_save">
-  下载范围：
-  <el-select v-model="begin" placeholder="起始话" size="mini" style="width:150px;">
-    <el-option
-      v-for="item in content_comic"
-      :key="item.index"
-      :label="item.name"
-      :value="item.index">
-    </el-option>
-  </el-select>
-  至
-  <el-select v-model="end" placeholder="终止话" size="mini" style="width:150px;margin-right:20px;">
-    <el-option
-      v-for="item in content_comic"
-      :key="item.index"
-      :label="item.name"
-      :value="item.index">
-    </el-option>
-  </el-select>
-</div>
-`
-        collect.after(app_html);
-        if (isPC)
-            document.getElementById('app_save').setAttribute('style', 'margin-top:18px;');
-        else
-            document.getElementsByClassName('detailsTextContentItem')[0].setAttribute('style', 'flex-wrap:wrap;');
-        app = new Vue({
-            el: '#app_save',
-            data: {
-                content_comic: [],
-                begin: '',
-                end: '',
-            },
-        })
-        GM_addStyle('.el-input__suffix {display:none !important;}');
-        apiChapters(comic)
-            .then(function (response) {
-                content_comic = response.groups.default.chapters;
-                app.content_comic = content_comic;
-                app.begin = content_comic.at(0).index;
-                app.end = content_comic.at(-1).index;
-            }).catch(function (error) {
-                save.innerHTML = '下载失败';
-            })
+        if (enableDownload) {
+          GM_addStyle('.comicParticulars-botton:nth-of-type(4) {background: lightskyblue;}');
+          if (isPC)
+              collect = document.getElementsByClassName('collect')[0];
+          else
+              collect = document.getElementsByTagName('button')[2];
+          save = collect.cloneNode();
+          save.innerHTML = '批量下载';
+          save.onclick = saveComic;
+          collect.after(save);
+          var app_html = document.createElement("div");
+          app_html.innerHTML = `
+  <div id="app_save">
+    下载范围：
+    <el-select v-model="begin" placeholder="起始话" size="mini" style="width:150px;">
+      <el-option
+        v-for="item in content_comic"
+        :key="item.index"
+        :label="item.name"
+        :value="item.index">
+      </el-option>
+    </el-select>
+    至
+    <el-select v-model="end" placeholder="终止话" size="mini" style="width:150px;margin-right:20px;">
+      <el-option
+        v-for="item in content_comic"
+        :key="item.index"
+        :label="item.name"
+        :value="item.index">
+      </el-option>
+    </el-select>
+  </div>
+  `
+          collect.after(app_html);
+          if (isPC)
+              document.getElementById('app_save').setAttribute('style', 'margin-top:18px;');
+          else
+              document.getElementsByClassName('detailsTextContentItem')[0].setAttribute('style', 'flex-wrap:wrap;');
+          app = new Vue({
+              el: '#app_save',
+              data: {
+                  content_comic: [],
+                  begin: '',
+                  end: '',
+              },
+          })
+          GM_addStyle('.el-input__suffix {display:none !important;}');
+          apiChapters(comic,isPC)
+              .then(function (response) {
+                  content_comic = response.groups.default.chapters;
+                  app.content_comic = content_comic;
+                  app.begin = content_comic.at(0).index;
+                  app.end = content_comic.at(-1).index;
+              }).catch(function (error) {
+                  save.innerHTML = '下载失败';
+              })
+        }
         cookieStore.get('token')
             .then(function (token) {
                 if (token) {
-                    axios.get('https://api.copymanga.net/api/v3/comic2/query/' + comic, {
+                    axios.get('https://api.mangacopy.com/api/v3/comic2/query/' + comic, {
                         headers: {
                             'authorization': 'Token ' + token.value
                         }
@@ -202,7 +230,7 @@ function tablePage(isPC) {
                         if (response.data.results.browse != null) {
                             var read = document.getElementsByClassName('comicParticulars-botton')[0];
                             read.innerHTML = response.data.results.browse.chapter_name;
-                            read.href = 'https://copymanga.site/comic/' + comic + '/chapter/' + response.data.results.browse.chapter_uuid;
+                            read.href = 'https://mangacopy.com/comic/' + comic + '/chapter/' + response.data.results.browse.chapter_uuid;
                             GM_addStyle('.comicParticulars-botton {max-width:80px; overflow: hidden;text-overflow: ellipsis; white-space: nowrap;}');
                         }
                     });
@@ -223,7 +251,7 @@ function tablePage(isPC) {
             let c = content_comic[idx];
             task_cnt++;
             save.innerHTML = task_cnt + '/' + (app.end - app.begin + 1);
-            await axios.get('https://api.copymanga.site/api/v3/comic/' + comic + '/chapter/' + c.id)
+            await axios.get('https://api.mangacopy.com/api/v3/comic/' + comic + '/chapter/' + c.id)
                 .then(async function (response) {
                     let task_chapter = [];
                     var chpt_index = Number(response.data.results.chapter.index) + 1
@@ -250,7 +278,7 @@ function tablePage(isPC) {
                         (() => {
                             let self = i;
                             let img_url = content[i].url;
-                            if (large_mode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
+                            if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
                             task_chapter.push(axios.get(img_url, { responseType: 'arraybuffer' })
                                 .then(function (response) {
                                     let date_created_file = new Date(date_created_chapter.getTime() + 2000 * self);
@@ -275,13 +303,18 @@ function tablePage(isPC) {
     }
 }
 
-async function comicPage() {
+async function comicPage(isPC) {
     // 停止加载原生网页
     window.stop();
 
     // 解析 URL
-    var comic = window.location.pathname.split('/')[2],
+    if (isPC) {
+        comic = window.location.pathname.split('/')[2];
         chapter = window.location.pathname.split('/')[4];
+    } else {
+        comic = window.location.pathname.split('/')[3];
+        chapter = window.location.pathname.split('/')[4];
+    }
 
     // 加载 HTML
     document.querySelectorAll('html')[0].innerHTML = `
@@ -457,10 +490,18 @@ async function comicPage() {
     loadCSS();
 
     // 加载 LocalStorage
-    let dark = store.get('dark') == true;
-    let skip = store.get('skip') == true;
-    let page = store.get('page') == true;
-    let scroll = store.get('scroll') == true;
+    let dark = store.get('dark');
+    let skip = store.get('skip');
+    let page = store.get('page');
+    let scroll = store.get('scroll');
+    if (dark == undefined)
+        dark = true;
+    if (skip == undefined)
+        skip = true;
+    if (page == undefined)
+        page = true;
+    if (scroll == undefined)
+        scroll = false;
     if (dark) {
         document.body.classList.add('dark');
     }
@@ -532,7 +573,7 @@ async function comicPage() {
                 }, 0);
             },
             switch_home: function () {
-                location.href = 'https://copymanga.site/comic/' + comic;
+                location.href = 'https://mangacopy.com/comic/' + comic;
             },
             switch_full: function () {
                 this.full = !this.full;
@@ -564,7 +605,7 @@ async function comicPage() {
             },
             send_comment: async function () {
                 let token = await cookieStore.get('token');
-                await axios.post('https://api.copymanga.net/api/v3/member/roast', 'chapter_id=' + chapter + '&roast=' + this.comment_input + '&_update=true', {
+                await axios.post('https://api.mangacopy.com/api/v3/member/roast', 'chapter_id=' + chapter + '&roast=' + this.comment_input + '&_update=true', {
                     headers: {
                         'authorization': 'Token ' + token.value
                     }
@@ -574,7 +615,7 @@ async function comicPage() {
                 await this.load_comment();
             },
             load_comment: async function () {
-                await axios.get('https://api.copymanga.site/api/v3/roasts?chapter_id=' + chapter + '&limit=100&offset=0&_update=true')
+                await axios.get('https://api.mangacopy.com/api/v3/roasts?chapter_id=' + chapter + '&limit=100&offset=0&_update=true')
                     .then(function (response) {
                         app.comment_data = response.data.results.list;
                     })
@@ -589,7 +630,7 @@ async function comicPage() {
     });
 
     // 加载图片
-    axios.get('https://api.copymanga.site/api/v3/comic/' + comic + '/chapter/' + chapter)
+    makeRequest('https://api.mangacopy.com/api/v3/comic/' + comic + '/chapter/' + chapter,isPC)
         .then(function (response) {
             document.title = response.data.results.comic.name + ' - ' + response.data.results.chapter.name;
             var content = response.data.results.chapter.contents,
@@ -598,7 +639,7 @@ async function comicPage() {
                 dict = {};
             for (var i = 0; i < size; i++) {
                 var img_url = content[i].url;
-                if (large_mode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
+                if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
                 app.comic_data.push({
                     url: img_url
                 })
@@ -613,17 +654,18 @@ async function comicPage() {
         })
 
     // 加载章节
-    apiChapters(comic)
+    apiChapters(comic,isPC)
         .then(function (response) {
-            var content = response.groups.default.chapters;
-            content.forEach((i) => {
+            // var content = response.groups.default.chapters;
+            var content = Object.values(response.groups).flatMap(obj => obj.chapters);
+            content.forEach((i,index) => {
                 if (location.href.indexOf(i.id) >= 0) {
-                    app.cur_ch = i.index;
-                    GM_addStyle('.el-menu>li:nth-child(' + (i.index + 1) + '){background:rgba(255,165,0,.5) !important}');
+                    app.cur_ch = index;
+                    GM_addStyle('.el-menu>li:nth-child(' + (index + 1) + '){background:rgba(255,165,0,.5) !important}');
                 }
                 app.sidebar_data.push({
                     title: i.name,
-                    href: 'https://copymanga.site/comic/' + comic + '/chapter/' + i.id
+                    href: 'https://mangacopy.com/comic/' + comic + '/chapter/' + i.id
                 })
             })
         })
@@ -705,7 +747,7 @@ async function comicPage() {
             if (event.keyCode == 13) {
                 app.switch_full();
             } else if (event.keyCode == 8) {
-                location.href = 'https://copymanga.site/comic/' + comic;
+                location.href = 'https://mangacopy.com/comic/' + comic;
             }
         }
     }
