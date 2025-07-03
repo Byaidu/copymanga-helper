@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      11.4
+// @version      11.5
 // @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
@@ -121,16 +121,63 @@ function makeRequest(url,isPC) {
     }
 }
 
-function apiChapters(comic,isPC) {
-    return makeRequest('https://www.mangacopy.com/comicdetail/' + comic + '/chapters',isPC)
-        .then((response) => {
-            let iv = response.data.results.substring(0, 16),
-                cipher = response.data.results.substring(16),
+function getAesKey(url,isPC) {
+    let aesKey;
+    if (isPC) {
+        return axios.get(url)
+            .then((response) => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.data, "text/html");
+                const scripts = doc.querySelectorAll('script');
+                scripts.forEach(script => {
+                    if (script.textContent.includes('dio')) {
+                        const regex = /dio\s*=\s*['"]?([^'"]+)['"]?/;
+                        const match = script.textContent.match(regex);
+                        if (match && match[1]) {
+                            aesKey = match[1];
+                        }
+                    }
+                });
+                return aesKey
+            })
+    } else {
+        return new Promise((resolve, reject) => {
+          GM_xmlhttpRequest({
+            url: url,
+            headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'},
+            responseType:'json',
+            onload: function(response) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.responseText, "text/html");
+                const scripts = doc.querySelectorAll('script');
+                scripts.forEach(script => {
+                    if (script.textContent.includes('dio')) {
+                        const regex = /dio\s*=\s*['"]?([^'"]+)['"]?/;
+                        const match = script.textContent.match(regex);
+                        if (match && match[1]) {
+                            aesKey = match[1];
+                        }
+                    }
+                });
+              resolve(aesKey);
+            },
+            onerror: function(error) {
+              reject(error);
+            }
+          });
+        });
+    }
+}
+
+async function apiChapters(comic,isPC) {
+    const results = await Promise.all([getAesKey('https://www.mangacopy.com/comic/' + comic,isPC), makeRequest('https://www.mangacopy.com/comicdetail/' + comic + '/chapters',isPC)]);
+    let iv = results[1].data.results.substring(0, 16),
+                cipher = results[1].data.results.substring(16),
                 result = JSON.parse(CryptoJS.AES.decrypt(
                     CryptoJS.enc.Base64.stringify(
                         CryptoJS.enc.Hex.parse(cipher)
                     ),
-                    CryptoJS.enc.Utf8.parse('xxxmanga.woo.key'),
+                    CryptoJS.enc.Utf8.parse(results[0]),
                     {
                         'iv': CryptoJS.enc.Utf8.parse(iv),
                         'mode': CryptoJS.mode.CBC,
@@ -148,7 +195,6 @@ function apiChapters(comic,isPC) {
                 v.type_name = type_name;
             });
             return result;
-        })
 }
 
 function tablePage(isPC) {
