@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      11.5
+// @version      11.6
 // @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
@@ -123,15 +123,16 @@ function makeRequest(url,isPC) {
 
 function getAesKey(url,isPC) {
     let aesKey;
+    const parser = new DOMParser();
+    const prohibition = ['(','{','function'];
+    const regex = /var\s+[a-zA-Z0-9]+\s*=\s*['"]?([^'"]+)['"]?/;
     if (isPC) {
         return axios.get(url)
             .then((response) => {
-                const parser = new DOMParser();
                 const doc = parser.parseFromString(response.data, "text/html");
                 const scripts = doc.querySelectorAll('script');
                 scripts.forEach(script => {
-                    if (script.textContent.includes('dio')) {
-                        const regex = /dio\s*=\s*['"]?([^'"]+)['"]?/;
+                    if (script.textContent.includes('var')&&!prohibition.some(char => script.textContent.includes(char))) {
                         const match = script.textContent.match(regex);
                         if (match && match[1]) {
                             aesKey = match[1];
@@ -147,12 +148,10 @@ function getAesKey(url,isPC) {
             headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'},
             responseType:'json',
             onload: function(response) {
-                const parser = new DOMParser();
                 const doc = parser.parseFromString(response.responseText, "text/html");
                 const scripts = doc.querySelectorAll('script');
                 scripts.forEach(script => {
-                    if (script.textContent.includes('dio')) {
-                        const regex = /dio\s*=\s*['"]?([^'"]+)['"]?/;
+                    if (script.textContent.includes('var')&&!prohibition.some(char => script.textContent.includes(char))) {
                         const match = script.textContent.match(regex);
                         if (match && match[1]) {
                             aesKey = match[1];
