@@ -11,6 +11,7 @@
 // @match        *://*.copymanga.site/*
 // @match        *://*.copymanga.tv/*
 // @match        *://*.mangacopy.com/*
+// @match        *://*.copy20.com/*
 // @match        *://copymanga.com/*
 // @match        *://copymanga.org/*
 // @match        *://copymanga.net/*
@@ -18,6 +19,7 @@
 // @match        *://copymanga.site/*
 // @match        *://copymanga.tv/*
 // @match        *://mangacopy.com/*
+// @match        *://copy20.com/*
 // @license      GNU General Public License v3.0 or later
 // @resource     element_css https://unpkg.com/element-ui@2.15.13/lib/theme-chalk/index.css
 // @resource     animate_css https://unpkg.com/animate.css@4.1.1/animate.min.css
