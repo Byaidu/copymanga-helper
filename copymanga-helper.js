@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      11.6
+// @version      11.7
 // @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
@@ -123,44 +123,87 @@ function makeRequest(url,isPC) {
     }
 }
 
-function getAesKey(url,isPC) {
-    let aesKey;
+async function getKeyName(url) {
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            url: url,
+            headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'},
+            responseType:'json',
+            onload: function(response) {
+                const scriptText = response.responseText;
+                const evalRegex = /^\s*eval\(\s*(.+)\s*\)\s*$/s;
+                const match = scriptText.match(evalRegex);
+                const innerCode = match[1];
+                const executeCode = new Function('return ' + innerCode);
+                const result = executeCode();
+                resolve(result);
+            },
+            onerror: function(error) {
+              reject(error);
+            }
+        });
+    });
+}
+
+async function getAesKey(url,isPC) {
+    let aesKeyName;
+    let aesKeyValue = 'oppzzivv.nzm.oip';
     const parser = new DOMParser();
-    const prohibition = ['(','{','function'];
-    const regex = /var\s+[a-zA-Z0-9]+\s*=\s*['"]?([^'"]+)['"]?/;
+    const regexName = /\[.*?\]\['parse'\]\((.*?)\)/;
     if (isPC) {
-        return axios.get(url)
-            .then((response) => {
-                const doc = parser.parseFromString(response.data, "text/html");
-                const scripts = doc.querySelectorAll('script');
-                scripts.forEach(script => {
-                    if (script.textContent.includes('var')&&!prohibition.some(char => script.textContent.includes(char))) {
-                        const match = script.textContent.match(regex);
-                        if (match && match[1]) {
-                            aesKey = match[1];
+        const response = await axios.get(url);
+        const doc = parser.parseFromString(response.data, "text/html");
+        const scripts = doc.querySelectorAll('script');
+        for (const script of scripts) {
+            if (script.src.includes('comic_detail_pass')) {
+                const result = await getKeyName(script.src);
+                const matchName = result.match(regexName);
+                if (matchName && matchName[1]) {
+                    aesKeyName = matchName[1];
+                    for (const script of scripts) {
+                        if (script.textContent.includes(aesKeyName)) {
+                            const regexValue = new RegExp(`var\\s+${aesKeyName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
+                            const matchValue = script.textContent.match(regexValue);
+                            if (matchValue && matchValue[1]) {
+                                aesKeyValue = matchValue[1];
+                                return aesKeyValue
+                            }
                         }
                     }
-                });
-                return aesKey
-            })
+                }
+            }
+        }
+        return aesKeyValue
     } else {
         return new Promise((resolve, reject) => {
           GM_xmlhttpRequest({
             url: url,
             headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'},
             responseType:'json',
-            onload: function(response) {
+            onload: async function(response) {
                 const doc = parser.parseFromString(response.responseText, "text/html");
                 const scripts = doc.querySelectorAll('script');
-                scripts.forEach(script => {
-                    if (script.textContent.includes('var')&&!prohibition.some(char => script.textContent.includes(char))) {
-                        const match = script.textContent.match(regex);
-                        if (match && match[1]) {
-                            aesKey = match[1];
+                for (const script of scripts) {
+                    if (script.src.includes('comic_detail_pass')) {
+                        const result = await getKeyName(script.src);
+                        const matchName = result.match(regexName);
+                        if (matchName && matchName[1]) {
+                            aesKeyName = matchName[1];
+                            for (const s of scripts) {
+                                if (s.textContent.includes(aesKeyName)) {
+                                    const regexValue = new RegExp(`var\\s+${aesKeyName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
+                                    const matchValue = s.textContent.match(regexValue);
+                                    if (matchValue && matchValue[1]) {
+                                        aesKeyValue = matchValue[1];
+                                        resolve(aesKeyValue);
+                                        return;
+                                    }
+                                }
+                            }
                         }
                     }
-                });
-              resolve(aesKey);
+                }
+                resolve(aesKeyValue);
             },
             onerror: function(error) {
               reject(error);
