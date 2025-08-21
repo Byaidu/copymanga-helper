@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      11.7
+// @version      11.8
 // @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
@@ -101,24 +101,44 @@ function homePage() {
     GM_addStyle('.header-jum {display:none;}');
 }
 
-function makeRequest(url,isPC) {
+function makeRequest(url, isPC, dnt) {
+    let headers;
     if (isPC) {
+        if (dnt != null) {
+            headers = {'dnts': dnt};
+        } else {
+            headers = {};
+        }
         // axios
-        return axios.get(url)
+        return axios.get(url, {headers:headers})
     } else {
+        if (dnt != null) {
+            headers = {
+                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0',
+                'dnts': dnt
+                };
+        } else {
+            headers = {
+                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'
+                };
+        }
         // gm绕过ua
         return new Promise((resolve, reject) => {
-          GM_xmlhttpRequest({
-            url: url,
-            headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'},
-            responseType:'json',
-            onload: function(response) {
-              resolve({data:response.response});
-            },
-            onerror: function(error) {
-              reject(error);
-            }
-          });
+            GM_xmlhttpRequest({
+                url: url,
+                headers: headers,
+                responseType:'json',
+                onload: function(response) {
+                    if (response.response === undefined){
+                        resolve({data:response.responseText});
+                    } else {
+                       resolve({data:response.response});
+                    }
+                },
+                onerror: function(error) {
+                    reject(error);
+                }
+            });
         });
     }
 }
@@ -160,10 +180,10 @@ async function getAesKey(url,isPC) {
                 const matchName = result.match(regexName);
                 if (matchName && matchName[1]) {
                     aesKeyName = matchName[1];
-                    for (const script of scripts) {
-                        if (script.textContent.includes(aesKeyName)) {
+                    for (const s of scripts) {
+                        if (s.textContent.includes(aesKeyName)) {
                             const regexValue = new RegExp(`var\\s+${aesKeyName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
-                            const matchValue = script.textContent.match(regexValue);
+                            const matchValue = s.textContent.match(regexValue);
                             if (matchValue && matchValue[1]) {
                                 aesKeyValue = matchValue[1];
                                 return aesKeyValue
@@ -214,7 +234,7 @@ async function getAesKey(url,isPC) {
 }
 
 async function apiChapters(comic,isPC) {
-    const results = await Promise.all([getAesKey('https://www.mangacopy.com/comic/' + comic,isPC), makeRequest('https://www.mangacopy.com/comicdetail/' + comic + '/chapters',isPC)]);
+    const results = await Promise.all([getAesKey('https://www.mangacopy.com/comic/' + comic, isPC), makeRequest('https://www.mangacopy.com/comicdetail/' + comic + '/chapters', isPC, 1)]);
     let iv = results[1].data.results.substring(0, 16),
                 cipher = results[1].data.results.substring(16),
                 result = JSON.parse(CryptoJS.AES.decrypt(
@@ -720,28 +740,87 @@ async function comicPage(isPC) {
     });
 
     // 加载图片
-    makeRequest('https://api.mangacopy.com/api/v3/comic/' + comic + '/chapter/' + chapter,isPC)
+    // makeRequest('https://api.mangacopy.com/api/v3/comic/' + comic + '/chapter/' + chapter,isPC)
+    //     .then(function (response) {
+    //         document.title = response.data.results.comic.name + ' - ' + response.data.results.chapter.name;
+    //         var content = response.data.results.chapter.contents,
+    //             matrix = document.getElementById('matrix'),
+    //             size = content.length,
+    //             dict = {};
+    //         for (var i = 0; i < size; i++) {
+    //             var img_url = content[i].url;
+    //             if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
+    //             app.comic_data.push({
+    //                 url: img_url
+    //             })
+    //         }
+    //         // TODO
+    //         setTimeout(() => {
+    //             let $blank = $('.inner_img:eq(0)').clone();
+    //             $blank.addClass('blank');
+    //             $blank.css('filter', 'brightness(0) invert(1)');
+    //             $('#matrix').prepend($blank);
+    //         }, 0);
+    //     })
+    makeRequest('https://www.mangacopy.com/comic/' + comic + '/chapter/' + chapter, isPC, null)
         .then(function (response) {
-            document.title = response.data.results.comic.name + ' - ' + response.data.results.chapter.name;
-            var content = response.data.results.chapter.contents,
-                matrix = document.getElementById('matrix'),
-                size = content.length,
-                dict = {};
-            for (var i = 0; i < size; i++) {
-                var img_url = content[i].url;
-                if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
-                app.comic_data.push({
-                    url: img_url
-                })
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(response.data, "text/html");
+        const scripts = doc.querySelectorAll('script');
+        const parts = doc.title.split(" - ")
+        let contentName = 'contentKey';
+        let contentValue ;
+        let keytName = 'cct';
+        let keytValue ;
+        document.title = parts[0] + ' - ' + parts[1];
+        for (const script of scripts) {
+            if (script.textContent.includes(contentName)) {
+                const regexValue = new RegExp(`var\\s+${contentName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
+                const matchValue = script.textContent.match(regexValue);
+                if (matchValue && matchValue[1]) {
+                    contentValue = matchValue[1];
+                }
             }
-            // TODO
-            setTimeout(() => {
-                let $blank = $('.inner_img:eq(0)').clone();
-                $blank.addClass('blank');
-                $blank.css('filter', 'brightness(0) invert(1)');
-                $('#matrix').prepend($blank);
-            }, 0);
+            if (script.textContent.includes(keytName)) {
+                const regexValue = new RegExp(`var\\s+${keytName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
+                const matchValue = script.textContent.match(regexValue);
+                if (matchValue && matchValue[1]) {
+                    keytValue = matchValue[1];
+                }
+            }
+        }
+    let iv = contentValue.substring(0, 16),
+        cipher = contentValue.substring(16),
+        result = JSON.parse(CryptoJS.AES.decrypt(
+            CryptoJS.enc.Base64.stringify(
+                CryptoJS.enc.Hex.parse(cipher)
+            ),
+            CryptoJS.enc.Utf8.parse(keytValue),
+            {
+                'iv': CryptoJS.enc.Utf8.parse(iv),
+                'mode': CryptoJS.mode.CBC,
+                'padding': CryptoJS.pad.Pkcs7
+            }
+        ).toString(CryptoJS.enc.Utf8));
+    var matrix = document.getElementById('matrix'),
+        size = result.length,
+        dict = {};
+    for (var i = 0; i < size; i++) {
+        var img_url = result[i].url;
+        if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
+        app.comic_data.push({
+            url: img_url
         })
+    }
+    // TODO
+    setTimeout(() => {
+        let $blank = $('.inner_img:eq(0)').clone();
+        $blank.addClass('blank');
+        $blank.css('filter', 'brightness(0) invert(1)');
+        $('#matrix').prepend($blank);
+    }, 0);
+        })
+
 
     // 加载章节
     apiChapters(comic,isPC)
@@ -755,7 +834,7 @@ async function comicPage(isPC) {
                 }
                 app.sidebar_data.push({
                     title: i.name,
-                    href: 'https://mangacopy.com/comic/' + comic + '/chapter/' + i.id
+                    href: 'https://www.mangacopy.com/comic/' + comic + '/chapter/' + i.id
                 })
             })
         })
