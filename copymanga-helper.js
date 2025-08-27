@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      11.8
+// @version      12.0
 // @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
@@ -12,6 +12,7 @@
 // @match        *://*.copymanga.tv/*
 // @match        *://*.mangacopy.com/*
 // @match        *://*.copy20.com/*
+// @match        *://*.2025copy.com/*
 // @match        *://copymanga.com/*
 // @match        *://copymanga.org/*
 // @match        *://copymanga.net/*
@@ -20,6 +21,7 @@
 // @match        *://copymanga.tv/*
 // @match        *://mangacopy.com/*
 // @match        *://copy20.com/*
+// @match        *://2025copy.com/*
 // @license      GNU General Public License v3.0 or later
 // @resource     element_css https://unpkg.com/element-ui@2.15.13/lib/theme-chalk/index.css
 // @resource     animate_css https://unpkg.com/animate.css@4.1.1/animate.min.css
@@ -39,6 +41,7 @@
 
 var largeMode = 1;
 var enableDownload = 0;
+var getPictureMode = 1;
 
 // retry
 axios.interceptors.response.use(undefined, (err) => {
@@ -101,31 +104,18 @@ function homePage() {
     GM_addStyle('.header-jum {display:none;}');
 }
 
-function makeRequest(url, isPC, dnt) {
-    let headers;
+function makeRequest(options) {
+    const {url, isPC, headers, params} = options;
     if (isPC) {
-        if (dnt != null) {
-            headers = {'dnts': dnt};
-        } else {
-            headers = {};
-        }
         // axios
-        return axios.get(url, {headers:headers})
+        return axios.get(url, {headers, params});
     } else {
-        if (dnt != null) {
-            headers = {
-                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0',
-                'dnts': dnt
-                };
-        } else {
-            headers = {
-                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'
-                };
-        }
+        const urlParams = new URLSearchParams(params);
+        const fullUrl = `${url}?${urlParams.toString()}`;
         // gm绕过ua
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
-                url: url,
+                url: fullUrl,
                 headers: headers,
                 responseType:'json',
                 onload: function(response) {
@@ -143,105 +133,89 @@ function makeRequest(url, isPC, dnt) {
     }
 }
 
-async function getKeyName(url) {
-    return new Promise((resolve, reject) => {
-        GM_xmlhttpRequest({
-            url: url,
-            headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'},
-            responseType:'json',
-            onload: function(response) {
+async function getAesName(url, isPC, fileName) {
+    let aesKeyName;
+    const request = {
+        url: url,
+        isPC: isPC
+    };
+    const regexName = /\[.*?\]\['parse'\]\((.*?)\)/;
+    const response = await makeRequest(request);
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(response.data, "text/html");
+    const scripts = doc.querySelectorAll('script');
+    if (fileName !== undefined){
+        for (const script of scripts) {
+            if (script.src.includes(fileName)) {
+                const request = {
+                    url: script.src,
+                    isPC: isPC
+                };
+                const response = await makeRequest(request);
                 const scriptText = response.responseText;
                 const evalRegex = /^\s*eval\(\s*(.+)\s*\)\s*$/s;
                 const match = scriptText.match(evalRegex);
                 const innerCode = match[1];
                 const executeCode = new Function('return ' + innerCode);
                 const result = executeCode();
-                resolve(result);
-            },
-            onerror: function(error) {
-              reject(error);
-            }
-        });
-    });
-}
-
-async function getAesKey(url,isPC) {
-    let aesKeyName;
-    let aesKeyValue = 'oppzzivv.nzm.oip';
-    const parser = new DOMParser();
-    const regexName = /\[.*?\]\['parse'\]\((.*?)\)/;
-    if (isPC) {
-        const response = await axios.get(url);
-        const doc = parser.parseFromString(response.data, "text/html");
-        const scripts = doc.querySelectorAll('script');
-        for (const script of scripts) {
-            if (script.src.includes('comic_detail_pass')) {
-                const result = await getKeyName(script.src);
                 const matchName = result.match(regexName);
                 if (matchName && matchName[1]) {
                     aesKeyName = matchName[1];
-                    for (const s of scripts) {
-                        if (s.textContent.includes(aesKeyName)) {
-                            const regexValue = new RegExp(`var\\s+${aesKeyName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
-                            const matchValue = s.textContent.match(regexValue);
-                            if (matchValue && matchValue[1]) {
-                                aesKeyValue = matchValue[1];
-                                return aesKeyValue
-                            }
-                        }
-                    }
+                    break;
                 }
             }
         }
-        return aesKeyValue
-    } else {
-        return new Promise((resolve, reject) => {
-          GM_xmlhttpRequest({
-            url: url,
-            headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'},
-            responseType:'json',
-            onload: async function(response) {
-                const doc = parser.parseFromString(response.responseText, "text/html");
-                const scripts = doc.querySelectorAll('script');
-                for (const script of scripts) {
-                    if (script.src.includes('comic_detail_pass')) {
-                        const result = await getKeyName(script.src);
-                        const matchName = result.match(regexName);
-                        if (matchName && matchName[1]) {
-                            aesKeyName = matchName[1];
-                            for (const s of scripts) {
-                                if (s.textContent.includes(aesKeyName)) {
-                                    const regexValue = new RegExp(`var\\s+${aesKeyName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
-                                    const matchValue = s.textContent.match(regexValue);
-                                    if (matchValue && matchValue[1]) {
-                                        aesKeyValue = matchValue[1];
-                                        resolve(aesKeyValue);
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                resolve(aesKeyValue);
-            },
-            onerror: function(error) {
-              reject(error);
-            }
-          });
-        });
     }
+    return [aesKeyName,doc];
+}
+
+async function getAesKey(url, isPC, defaultName, fileName) {
+    const result = await getAesName(url, isPC, fileName);
+    let aesKeyValue = [];
+    let aesKeyName = result[0];
+    const doc = result[1];
+    const scripts = doc.querySelectorAll('script');
+    for (let i = 0; i < defaultName.length; i++) {
+        if (result[0] === undefined){
+            aesKeyName = defaultName[i];
+        }
+        for (const script of scripts) {
+            if (script.textContent.includes(aesKeyName)) {
+                const regexValue = new RegExp(`var\\s+${aesKeyName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
+                const matchValue = script.textContent.match(regexValue);
+                if (matchValue && matchValue[1]) {
+                    aesKeyValue.push(matchValue[1]);
+                    break;
+                }
+            }
+        }
+    }
+    return [aesKeyValue, doc];
 }
 
 async function apiChapters(comic,isPC) {
-    const results = await Promise.all([getAesKey('https://www.mangacopy.com/comic/' + comic, isPC), makeRequest('https://www.mangacopy.com/comicdetail/' + comic + '/chapters', isPC, 1)]);
+    const aesKeyName = 'ccz';
+    const headers = {'dnts': '1'};
+    const request = {
+        url: window.location.origin + '/comicdetail/' + comic + '/chapters',
+        isPC: isPC,
+        headers:headers
+    };
+    const results = await Promise.all([
+        getAesKey(
+            window.location.origin + '/comic/' + comic,
+            isPC,
+            [aesKeyName]
+            ),
+        makeRequest(request)
+    ]);
     let iv = results[1].data.results.substring(0, 16),
                 cipher = results[1].data.results.substring(16),
                 result = JSON.parse(CryptoJS.AES.decrypt(
                     CryptoJS.enc.Base64.stringify(
                         CryptoJS.enc.Hex.parse(cipher)
                     ),
-                    CryptoJS.enc.Utf8.parse(results[0]),
+                    CryptoJS.enc.Utf8.parse(results[0][0]),
                     {
                         'iv': CryptoJS.enc.Utf8.parse(iv),
                         'mode': CryptoJS.mode.CBC,
@@ -340,7 +314,7 @@ function tablePage(isPC) {
                         if (response.data.results.browse != null) {
                             var read = document.getElementsByClassName('comicParticulars-botton')[0];
                             read.innerHTML = response.data.results.browse.chapter_name;
-                            read.href = 'https://mangacopy.com/comic/' + comic + '/chapter/' + response.data.results.browse.chapter_uuid;
+                            read.href = window.location.origin + '/comic/' + comic + '/chapter/' + response.data.results.browse.chapter_uuid;
                             GM_addStyle('.comicParticulars-botton {max-width:80px; overflow: hidden;text-overflow: ellipsis; white-space: nowrap;}');
                         }
                     });
@@ -431,7 +405,7 @@ async function comicPage(isPC) {
 <head></head>
 <body>
   <div id="app">
-    <div @mouseleave="drawer=false">
+    <div @mouseleave="drawer=false; isClickable=false">
       <div @mouseover="drawer=true" style="top:0px;left:0px;height:100vh;width:10vw;position: fixed;"></div>
       <el-drawer
         id="sidebar"
@@ -447,7 +421,7 @@ async function comicPage(isPC) {
           active-text-color="#ffd04b"
           @select="handleSelect">
           <template v-for="(item, index) in sidebar_data">
-            <el-menu-item v-bind:index="index">{{item.title}}</el-menu-item>
+            <el-menu-item v-bind:index="index" :disabled="!isClickable">{{item.title}}</el-menu-item>
           </template>
         </el-menu>
       </el-drawer>
@@ -630,6 +604,7 @@ async function comicPage(isPC) {
         el: '#app',
         data: {
             drawer: false,
+            isClickable: false,
             size: '100%',
             modal: false,
             direction: 'ltr',
@@ -681,9 +656,12 @@ async function comicPage(isPC) {
                         ch_list = sidebar.children[0].children;
                     sidebar.scrollTop = ch_list[Math.max(app.cur_ch - 2, 0)].offsetTop;
                 }, 0);
+                setTimeout(() => {
+                    this.isClickable = true;
+                }, 10);
             },
             switch_home: function () {
-                location.href = 'https://mangacopy.com/comic/' + comic;
+                location.href = window.location.origin + '/comic/' + comic;
             },
             switch_full: function () {
                 this.full = !this.full;
@@ -740,73 +718,49 @@ async function comicPage(isPC) {
     });
 
     // 加载图片
-    // makeRequest('https://api.mangacopy.com/api/v3/comic/' + comic + '/chapter/' + chapter,isPC)
-    //     .then(function (response) {
-    //         document.title = response.data.results.comic.name + ' - ' + response.data.results.chapter.name;
-    //         var content = response.data.results.chapter.contents,
-    //             matrix = document.getElementById('matrix'),
-    //             size = content.length,
-    //             dict = {};
-    //         for (var i = 0; i < size; i++) {
-    //             var img_url = content[i].url;
-    //             if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
-    //             app.comic_data.push({
-    //                 url: img_url
-    //             })
-    //         }
-    //         // TODO
-    //         setTimeout(() => {
-    //             let $blank = $('.inner_img:eq(0)').clone();
-    //             $blank.addClass('blank');
-    //             $blank.css('filter', 'brightness(0) invert(1)');
-    //             $('#matrix').prepend($blank);
-    //         }, 0);
-    //     })
-    makeRequest('https://www.mangacopy.com/comic/' + comic + '/chapter/' + chapter, isPC, null)
-        .then(function (response) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(response.data, "text/html");
+    //通过图片List
+    if (getPictureMode){
+        const request = {
+            url: 'https://api.2025copy.com/api/v3/comic/' + comic + '/chapter/' + chapter,
+            isPC: isPC
+        };
+        const response = await makeRequest(request);
+        document.title = response.data.results.comic.name + ' - ' + response.data.results.chapter.name;
+        var content = response.data.results.chapter.contents;
+    } else {
+        //通过加密数据
+        const contentName = 'contentKey';
+        const aesKeyName = 'cct';
+        const results = await getAesKey(
+            window.location.origin + '/comic/' + comic + '/chapter/' + chapter,
+            isPC,
+            [contentName, aesKeyName]
+            );
+        const doc = results[1];
         const scripts = doc.querySelectorAll('script');
         const parts = doc.title.split(" - ")
-        let contentName = 'contentKey';
-        let contentValue ;
-        let keytName = 'cct';
-        let keytValue ;
         document.title = parts[0] + ' - ' + parts[1];
-        for (const script of scripts) {
-            if (script.textContent.includes(contentName)) {
-                const regexValue = new RegExp(`var\\s+${contentName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
-                const matchValue = script.textContent.match(regexValue);
-                if (matchValue && matchValue[1]) {
-                    contentValue = matchValue[1];
+        const contentValue = results[0][0];
+        const aesKeyValue = results[0][1];
+        let iv = contentValue.substring(0, 16),
+            cipher = contentValue.substring(16);
+        content = JSON.parse(CryptoJS.AES.decrypt(
+                CryptoJS.enc.Base64.stringify(
+                    CryptoJS.enc.Hex.parse(cipher)
+                ),
+                CryptoJS.enc.Utf8.parse(aesKeyValue),
+                {
+                    'iv': CryptoJS.enc.Utf8.parse(iv),
+                    'mode': CryptoJS.mode.CBC,
+                    'padding': CryptoJS.pad.Pkcs7
                 }
-            }
-            if (script.textContent.includes(keytName)) {
-                const regexValue = new RegExp(`var\\s+${keytName}\\s*=\\s*['"]?([^'";\\s]+)['"]?`);
-                const matchValue = script.textContent.match(regexValue);
-                if (matchValue && matchValue[1]) {
-                    keytValue = matchValue[1];
-                }
-            }
-        }
-    let iv = contentValue.substring(0, 16),
-        cipher = contentValue.substring(16),
-        result = JSON.parse(CryptoJS.AES.decrypt(
-            CryptoJS.enc.Base64.stringify(
-                CryptoJS.enc.Hex.parse(cipher)
-            ),
-            CryptoJS.enc.Utf8.parse(keytValue),
-            {
-                'iv': CryptoJS.enc.Utf8.parse(iv),
-                'mode': CryptoJS.mode.CBC,
-                'padding': CryptoJS.pad.Pkcs7
-            }
-        ).toString(CryptoJS.enc.Utf8));
-    var matrix = document.getElementById('matrix'),
-        size = result.length,
-        dict = {};
-    for (var i = 0; i < size; i++) {
-        var img_url = result[i].url;
+            ).toString(CryptoJS.enc.Utf8));
+    }
+    const matrix = document.getElementById('matrix'),
+          size = content.length,
+          dict = {};
+    for (let i = 0; i < size; i++) {
+        let img_url = content[i].url;
         if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
         app.comic_data.push({
             url: img_url
@@ -819,8 +773,6 @@ async function comicPage(isPC) {
         $blank.css('filter', 'brightness(0) invert(1)');
         $('#matrix').prepend($blank);
     }, 0);
-        })
-
 
     // 加载章节
     apiChapters(comic,isPC)
@@ -834,7 +786,7 @@ async function comicPage(isPC) {
                 }
                 app.sidebar_data.push({
                     title: i.name,
-                    href: 'https://www.mangacopy.com/comic/' + comic + '/chapter/' + i.id
+                    href: window.location.origin + '/comic/' + comic + '/chapter/' + i.id
                 })
             })
         })
@@ -901,22 +853,35 @@ async function comicPage(isPC) {
     }
     document.body.onkeydown = function (event) {
         if (!app.is_input) {
-            if (event.keyCode == 38) {
-                if (app.page) scrollUp();
-            } else if (event.keyCode == 40) {
-                if (app.page) scrollDown();
-            }
-            if (!app.scroll) {
-                if (event.keyCode == 37) {
+            if (app.scroll) {
+                switch(event.keyCode) {
+                case 38:
                     app.prev_chapter();
-                } else if (event.keyCode == 39) {
+                    break;
+                case 40:
                     app.next_chapter();
+                    break;
+                }
+            } else {
+                switch(event.keyCode) {
+                case 38:
+                    if (app.page) scrollUp();
+                    break;
+                case 40:
+                    if (app.page) scrollDown();
+                    break;
+                case 37:
+                    app.prev_chapter();
+                    break;
+                case 39:
+                    app.next_chapter();
+                    break;
                 }
             }
             if (event.keyCode == 13) {
                 app.switch_full();
             } else if (event.keyCode == 8) {
-                location.href = 'https://mangacopy.com/comic/' + comic;
+                location.href = window.location.origin + '/comic/' + comic;
             }
         }
     }
@@ -928,13 +893,29 @@ async function comicPage(isPC) {
             first_img = img_list[app.skip ? 1 : 0],
             last_img = img_list[img_list.length - 1];
         if (img_list.length > 0) {
-            img_list.forEach((i, index) => {
-                if (pageYOffset > i.offsetTop - 5 && pageYOffset < i.offsetTop + i.offsetHeight - 5 && cur_id == 0) {
-                    cur_id = index + 1;
+            if (app.scroll) {
+                let progress = matrix.scrollLeft / (matrix.scrollWidth - matrix.clientWidth);
+                progress = Math.max(0, Math.min(1, Math.abs(progress)));
+                let referenceX = matrix.clientWidth - matrix.clientWidth * progress + matrix.offsetLeft;
+                referenceX = Math.round(referenceX);
+                for (let i = 0; i < img_list.length; i++) {
+                    const imgOffsetLeft = Math.round(img_list[i].getBoundingClientRect().left);
+                    const imgPosition = [imgOffsetLeft - 1, imgOffsetLeft + img_list[i].clientWidth +1];
+                    if (imgPosition[1] > referenceX && referenceX > imgPosition[0]) {
+                        cur_id = i + 1;
+                        break;
+                    }
                 }
-            });
-            if (pageYOffset > last_img.offsetTop + last_img.offsetHeight - 5)
-                cur_id = img_list.length + 1;
+            } else {
+                for (let i = 0; i < img_list.length; i++) {
+                    if (pageYOffset > img_list[i].offsetTop - 5 && pageYOffset < img_list[i].offsetTop + img_list[i].offsetHeight - 5 && cur_id == 0) {
+                        cur_id = i + 1;
+                        break;
+                    }
+                }
+                if (pageYOffset > last_img.offsetTop + last_img.offsetHeight - 5)
+                    cur_id = img_list.length + 1;
+            }
             if (app.cur_lock == 0) app.cur_id = cur_id;
         }
     }
