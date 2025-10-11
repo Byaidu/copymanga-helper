@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      12.0
+// @version      12.1
 // @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
@@ -717,18 +717,63 @@ async function comicPage(isPC) {
         }
     });
 
-    // 加载图片
+    //接口出错通知
+    function showErrorNotification() {
+        GM_addStyle(`
+            .tamper-mask {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.5);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
+                z-index: 99998;
+                pointer-events: auto;
+              }
+            .tamper-notification {
+              position: fixed;
+              top: 100px;
+              left: 50%;
+              transform: translateX(-50%) translateY(0);
+              padding: 15px 20px;
+              background: #333;
+              color: white;
+              border-radius: 4px;
+              z-index: 99999;
+              font-size: 16px;
+            }
+        `);
+        const mask = document.createElement('div');
+        mask.className = 'tamper-mask';
+        document.body.appendChild(mask);
+        const notification = document.createElement('div');
+        notification.className = 'tamper-notification';
+        notification.textContent = '请联系作者更新脚本！';
+        document.body.appendChild(notification);
+    }
+
     //通过图片List
-    if (getPictureMode){
+    async function getImageOld() {
+        const headers = {'version': '2025.08.08', 'platform': '1', 'version': '2025.08.08'};
         const request = {
             url: 'https://api.2025copy.com/api/v3/comic/' + comic + '/chapter/' + chapter,
-            isPC: isPC
+            isPC: isPC,
+            headers: headers
         };
         const response = await makeRequest(request);
+        if (response.data.code == 210) {
+            showErrorNotification();
+            return;
+        }
         document.title = response.data.results.comic.name + ' - ' + response.data.results.chapter.name;
-        var content = response.data.results.chapter.contents;
-    } else {
-        //通过加密数据
+        const content = response.data.results.chapter.contents;
+        return content;
+    }
+
+    //通过加密数据
+    async function getImageNew() {
         const contentName = 'contentKey';
         const aesKeyName = 'cct';
         const results = await getAesKey(
@@ -736,6 +781,11 @@ async function comicPage(isPC) {
             isPC,
             [contentName, aesKeyName]
             );
+        if (results[0].length != 2) {
+            getPictureMode = 0;
+            throw new Error();
+            return;
+        }
         const doc = results[1];
         const scripts = doc.querySelectorAll('script');
         const parts = doc.title.split(" - ")
@@ -743,8 +793,8 @@ async function comicPage(isPC) {
         const contentValue = results[0][0];
         const aesKeyValue = results[0][1];
         let iv = contentValue.substring(0, 16),
-            cipher = contentValue.substring(16);
-        content = JSON.parse(CryptoJS.AES.decrypt(
+            cipher = contentValue.substring(16),
+            content = JSON.parse(CryptoJS.AES.decrypt(
                 CryptoJS.enc.Base64.stringify(
                     CryptoJS.enc.Hex.parse(cipher)
                 ),
@@ -755,24 +805,41 @@ async function comicPage(isPC) {
                     'padding': CryptoJS.pad.Pkcs7
                 }
             ).toString(CryptoJS.enc.Utf8));
+        return content;
     }
-    const matrix = document.getElementById('matrix'),
-          size = content.length,
-          dict = {};
-    for (let i = 0; i < size; i++) {
-        let img_url = content[i].url;
-        if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
-        app.comic_data.push({
-            url: img_url
-        })
+
+    // 加载图片
+    async function loadImg() {
+        if (getPictureMode) {
+            var content;
+            try {
+                content = await getImageNew();
+            } catch (error) {
+                content = await getImageOld();
+            }
+        } else {
+            content = await getImageOld();
+        }
+        const matrix = document.getElementById('matrix'),
+              size = content.length,
+              dict = {};
+        for (let i = 0; i < size; i++) {
+            let img_url = content[i].url;
+            if (largeMode) img_url = img_url.replace('c800x.jpg', 'c1500x.jpg');
+            app.comic_data.push({
+                url: img_url
+            })
+        }
+        // TODO
+        setTimeout(() => {
+            let $blank = $('.inner_img:eq(0)').clone();
+            $blank.addClass('blank');
+            $blank.css('filter', 'brightness(0) invert(1)');
+            $('#matrix').prepend($blank);
+        }, 0);
     }
-    // TODO
-    setTimeout(() => {
-        let $blank = $('.inner_img:eq(0)').clone();
-        $blank.addClass('blank');
-        $blank.css('filter', 'brightness(0) invert(1)');
-        $('#matrix').prepend($blank);
-    }, 0);
+
+    loadImg();
 
     // 加载章节
     apiChapters(comic,isPC)
@@ -856,9 +923,11 @@ async function comicPage(isPC) {
             if (app.scroll) {
                 switch(event.keyCode) {
                 case 38:
+                    event.preventDefault()
                     app.prev_chapter();
                     break;
                 case 40:
+                    event.preventDefault()
                     app.next_chapter();
                     break;
                 }
