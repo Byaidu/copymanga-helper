@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ☄️拷贝漫画增强☄️
 // @namespace    http://tampermonkey.net/
-// @version      12.1
+// @version      12.2
 // @description  拷贝漫画去广告🚫、加速访问🚀、并排布局📖、图片高度自适应↕️、辅助翻页↔️、页码显示⏱、侧边目录栏📑、暗夜模式🌙、章节评论💬
 // @author       Byaidu
 // @match        *://*.copymanga.com/*
@@ -105,13 +105,14 @@ function homePage() {
 }
 
 function makeRequest(options) {
-    const {url, isPC, headers, params} = options;
+    const {url, isPC, headers = {}, params = {}} = options;
     if (isPC) {
         // axios
         return axios.get(url, {headers, params});
     } else {
         const urlParams = new URLSearchParams(params);
         const fullUrl = `${url}?${urlParams.toString()}`;
+        headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0';
         // gm绕过ua
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -409,7 +410,7 @@ async function comicPage(isPC) {
       <div @mouseover="drawer=true" style="top:0px;left:0px;height:100vh;width:10vw;position: fixed;"></div>
       <el-drawer
         id="sidebar"
-        :size="size"
+        :size="'auto'"
         :modal="modal"
         :visible="drawer"
         :with-header="false"
@@ -516,7 +517,7 @@ async function comicPage(isPC) {
       border-right: 0px;
     }
     .el-drawer__wrapper {
-      width: 20%;
+      width: 50%;
     }
     .el-drawer {
       background: transparent;
@@ -750,13 +751,13 @@ async function comicPage(isPC) {
         document.body.appendChild(mask);
         const notification = document.createElement('div');
         notification.className = 'tamper-notification';
-        notification.textContent = '请联系作者更新脚本！';
+        notification.innerHTML = '请更换IP或等待一小时后再试。<br>如果依然出现此提示，请联系作者更新脚本！';
         document.body.appendChild(notification);
     }
 
     //通过图片List
     async function getImageOld() {
-        const headers = {'version': '2025.08.08', 'platform': '1', 'version': '2025.08.08'};
+        const headers = {'version': '2025.08.08', 'platform': '1'};
         const request = {
             url: 'https://api.2025copy.com/api/v3/comic/' + comic + '/chapter/' + chapter,
             isPC: isPC,
@@ -782,7 +783,6 @@ async function comicPage(isPC) {
             [contentName, aesKeyName]
             );
         if (results[0].length != 2) {
-            getPictureMode = 0;
             throw new Error();
             return;
         }
