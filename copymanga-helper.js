@@ -196,7 +196,7 @@ async function getAesKey(url, isPC, defaultName, fileName) {
 
 async function apiChapters(comic,isPC) {
     const aesKeyName = 'ccz';
-    const headers = {'dnts': '1'};
+    const headers = {'dnts': '2'};
     const request = {
         url: window.location.origin + '/comicdetail/' + comic + '/chapters',
         isPC: isPC,
@@ -210,30 +210,34 @@ async function apiChapters(comic,isPC) {
             ),
         makeRequest(request)
     ]);
-    let iv = results[1].data.results.substring(0, 16),
-                cipher = results[1].data.results.substring(16),
-                result = JSON.parse(CryptoJS.AES.decrypt(
-                    CryptoJS.enc.Base64.stringify(
-                        CryptoJS.enc.Hex.parse(cipher)
-                    ),
-                    CryptoJS.enc.Utf8.parse(results[0][0]),
-                    {
-                        'iv': CryptoJS.enc.Utf8.parse(iv),
-                        'mode': CryptoJS.mode.CBC,
-                        'padding': CryptoJS.pad.Pkcs7
-                    }
-                ).toString(CryptoJS.enc.Utf8));
-            let type_map = new Map();
-            result.build.type.forEach((v, index) => {
-                type_map.set(v.id, v.name);
-            });
-            result.groups.default.chapters.forEach((v, index) => {
-                v.index = index;
-                let type_name = type_map.get(v.type);
-                v.name = "【" + type_name + "】" + v.name;
-                v.type_name = type_name;
-            });
-            return result;
+    let iv = typeof results[1].data === "string"
+            ? JSON.parse(results[1].data).results.substring(0, 16)
+            : results[1].data.results.substring(0, 16),
+        cipher = typeof results[1].data === "string"
+            ? JSON.parse(results[1].data).results.substring(16)
+            : results[1].data.results.substring(16),
+        result = JSON.parse(CryptoJS.AES.decrypt(
+            CryptoJS.enc.Base64.stringify(
+                CryptoJS.enc.Hex.parse(cipher)
+            ),
+            CryptoJS.enc.Utf8.parse(results[0][0]),
+            {
+                'iv': CryptoJS.enc.Utf8.parse(iv),
+                'mode': CryptoJS.mode.CBC,
+                'padding': CryptoJS.pad.Pkcs7
+            }
+        ).toString(CryptoJS.enc.Utf8));
+    let type_map = new Map();
+    result.build.type.forEach((v, index) => {
+        type_map.set(v.id, v.name);
+    });
+    result.groups.default.chapters.forEach((v, index) => {
+        v.index = index;
+        let type_name = type_map.get(v.type);
+        v.name = "【" + type_name + "】" + v.name;
+        v.type_name = type_name;
+    });
+    return result;
 }
 
 function tablePage(isPC) {
@@ -513,13 +517,21 @@ async function comicPage(isPC) {
     .inner_img {
       max-width: 100%;
     }
+    .el-drawer__container {
+    position: fixed;
+    right: auto;
+    width: auto;
+    }
     .el-menu {
+      text-align: center;
       border-right: 0px;
     }
     .el-drawer__wrapper {
-      width: 50%;
+      width: fit-content;
     }
     .el-drawer {
+      max-width: 50vw;
+      min-width: 15vw;
       background: transparent;
     }
     .el-drawer__body {
